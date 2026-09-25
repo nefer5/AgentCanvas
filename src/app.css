@@ -1,0 +1,327 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root,
+.app-shell {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  min-width: 320px;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell--loading {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 24px;
+  color: #263238;
+  background: #f7f7f8;
+}
+
+.agent-panel {
+  position: fixed;
+  z-index: 1000;
+  top: 68px;
+  right: 12px;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 24px));
+  max-width: 340px;
+  max-height: calc(100dvh - 96px);
+  overflow: auto;
+  color: #202124;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid rgb(60 64 67 / 18%);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(31 35 41 / 18%);
+  backdrop-filter: blur(12px);
+}
+
+.agent-panel--collapsed {
+  width: auto;
+  overflow: hidden;
+}
+
+/* The library owns the right-hand sidebar while it is open. */
+.app-shell:has(.excalidraw .default-sidebar) .agent-panel {
+  display: none;
+}
+
+.agent-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 10px 8px 14px;
+}
+
+.agent-panel__header h1 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.agent-panel__body {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.agent-panel__body[hidden] {
+  display: none;
+}
+
+.agent-panel__field {
+  display: grid;
+  gap: 5px;
+  color: #3c4043;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agent-panel select,
+.agent-panel textarea,
+.agent-panel button {
+  box-sizing: border-box;
+  color: inherit;
+  background: rgb(255 255 255 / 90%);
+  border: 1px solid #aeb4ba;
+  border-radius: 7px;
+}
+
+.agent-panel select,
+.agent-panel textarea {
+  width: 100%;
+  padding: 8px 9px;
+}
+
+.agent-panel textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.agent-panel button {
+  min-height: 34px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.agent-panel button:hover:not(:disabled) {
+  background: #f0f2f4;
+}
+
+.agent-panel button:disabled,
+.agent-panel select:disabled,
+.agent-panel textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.agent-panel button:focus-visible,
+.agent-panel select:focus-visible,
+.agent-panel textarea:focus-visible {
+  outline: 3px solid #0b57d0;
+  outline-offset: 2px;
+}
+
+.agent-panel__collapse {
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.agent-panel__project-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.agent-panel__path {
+  margin: -2px 0 0;
+  color: #51565c;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.agent-panel__connection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.agent-panel__connection--online {
+  color: #137333;
+}
+
+.agent-panel__connection--offline {
+  color: #4b5563;
+}
+
+.agent-panel__status-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 85%);
+}
+
+.agent-panel__counter {
+  justify-self: end;
+  color: #687078;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.agent-panel__submit {
+  min-height: 44px !important;
+  color: #fff !important;
+  background: #1a5fb4 !important;
+  border-color: #1a5fb4 !important;
+  font-weight: 700;
+}
+
+.agent-panel__submit:hover:not(:disabled) {
+  background: #144b8e !important;
+}
+
+.agent-panel__last-result,
+.agent-panel__live {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-panel__last-result {
+  margin: 0;
+  color: #3f464d;
+}
+
+.agent-panel__live {
+  margin: -4px 14px 14px;
+  min-height: 1px;
+  color: #3f464d;
+  overflow-wrap: anywhere;
+}
+
+.agent-panel__live--error {
+  color: #b42318;
+  font-weight: 650;
+}
+
+.agent-panel__live--collapsed {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+.agent-panel__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+@media (max-width: 639px) {
+  .agent-panel {
+    top: 68px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 88px);
+  }
+
+  .agent-panel--collapsed {
+    right: 8px;
+    left: auto;
+    width: auto;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell--loading {
+    color: #e8eaed;
+    background: #202124;
+  }
+
+  .agent-panel {
+    color: #f1f3f4;
+    background: rgb(32 33 36 / 94%);
+    border-color: rgb(232 234 237 / 22%);
+    box-shadow: 0 12px 34px rgb(0 0 0 / 48%);
+  }
+
+  .agent-panel__field,
+  .agent-panel__path,
+  .agent-panel__counter,
+  .agent-panel__last-result,
+  .agent-panel__live {
+    color: #d1d5db;
+  }
+
+  .agent-panel select,
+  .agent-panel textarea,
+  .agent-panel button {
+    color: #f1f3f4;
+    background: rgb(48 49 52 / 96%);
+    border-color: #747a80;
+  }
+
+  .agent-panel button:hover:not(:disabled) {
+    background: #42464b;
+  }
+
+  .agent-panel button:focus-visible,
+  .agent-panel select:focus-visible,
+  .agent-panel textarea:focus-visible {
+    outline-color: #8ab4f8;
+  }
+
+  .agent-panel__connection--online {
+    color: #75d991;
+  }
+
+  .agent-panel__connection--offline {
+    color: #c4c9cf;
+  }
+
+  .agent-panel__status-dot {
+    box-shadow: 0 0 0 2px rgb(32 33 36 / 90%);
+  }
+
+  .agent-panel__live--error {
+    color: #ff9c92;
+  }
+}

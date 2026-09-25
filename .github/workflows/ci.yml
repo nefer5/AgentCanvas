@@ -1,0 +1,55 @@
+name: Validate and package
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:publish
+      - run: npm test
+      - run: npm run build
+      - name: Obtain verified portable compiler
+        shell: powershell
+        run: ./scripts/bootstrap-inno.ps1
+      - run: npm run release:package
+      - run: npm run export:source
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentCanvas-windows
+          path: |
+            release/*.exe
+            release/*.zip
+            release/SHA256SUMS.txt
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: AgentCanvas-windows
+          path: release
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag/package version mismatch' }
+          $assets = @(Get-ChildItem release -File | Where-Object { $_.Extension -in @('.exe','.zip','.txt') } | Select-Object -ExpandProperty FullName)
+          gh release create $env:GITHUB_REF_NAME --draft --verify-tag --generate-notes --title "AgentCanvas $version" @assets

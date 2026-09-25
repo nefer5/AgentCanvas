@@ -1,0 +1,17 @@
+node_modules/
+dist/
+public/fonts/
+release/
+.tools/
+artifacts/
+.agent-canvas/
+.superpowers/
+.excalidraw-server*.pid
+*.log
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12

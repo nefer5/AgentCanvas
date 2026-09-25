@@ -1,0 +1,48 @@
+{
+  "name": "excalidraw-local",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "agent-canvas": "scripts/agent-canvas.mjs"
+  },
+  "scripts": {
+    "predev": "node scripts/copy-assets.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-assets.mjs",
+    "build": "tsc --noEmit && vite build",
+    "test:ui": "vitest run src",
+    "test:server": "node --test \"scripts/*.test.mjs\"",
+    "test:visual": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/visual-layout-check.ps1",
+    "test": "npm run test:ui && npm run test:server",
+    "start": "node scripts/server.mjs --port 4173",
+    "release": "npm test && npm run build && node scripts/build-release.mjs",
+    "release:package": "node scripts/build-release.mjs",
+    "check:publish": "node scripts/check-publish.mjs",
+    "export:source": "node scripts/export-source.mjs"
+  },
+  "overrides": {
+    "lodash-es": "4.18.1",
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.16"
+    }
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  },
+  "license": "MIT",
+  "description": "Local Excalidraw canvas for human and agent collaboration",
+  "engines": {
+    "node": ">=20"
+  }
+}
