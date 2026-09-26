@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CaptureUpdateAction, Excalidraw } from '@excalidraw/excalidraw'
+import { CaptureUpdateAction, Excalidraw, restoreElements } from '@excalidraw/excalidraw'
 import type {
   AppState,
   BinaryFiles,
@@ -32,11 +32,13 @@ import {
   AgentPanel,
   type PanelSubmissionResult,
 } from './components/AgentPanel'
-import { loadScene, saveScene } from './persistence'
+import { loadScene, saveScene, storageKey } from './persistence'
 import { loadLibrary, saveLibrary } from './library'
 import { createToolStyles, drawingDefaults } from './drawingDefaults'
 import { PartialEraser } from './components/PartialEraser'
 import { completeErasedStrokes } from './partialEraser'
+import { BoardManagement, boardRequest, type Board } from './components/BoardManagement'
+import { InterfaceIcon } from './components/InterfaceIcon'
 import './app.css'
 
 const LOCAL_SAVE_DELAY_MS = 300
@@ -78,7 +80,17 @@ function captureScene(
 }
 
 export default function App() {
-  const client = useMemo(() => createBridgeClient(), [])
+  const [boardId] = useState(() => new URLSearchParams(location.search).get('board'))
+  const [windowId] = useState(() => crypto.randomUUID())
+  const [board, setBoard] = useState<Board | null>(null)
+  const [historyRequest, setHistoryRequest] = useState(0)
+  const refreshBoardIdentity = useCallback((next: Board) => {
+    setBoard(current => current?.id === next.id && (current.name !== next.name || current.conversation !== next.conversation)
+      ? { ...current, name: next.name, conversation: next.conversation } : current)
+  }, [])
+  const [saveState, setSaveState] = useState('正在加载')
+  const client = useMemo(() => createBridgeClient(window.fetch.bind(window), boardId), [boardId])
+  const draftKey = useCallback((projectId: string) => `${boardId ?? projectId}:window:${windowId}`, [boardId, windowId])
   const saverRef = useRef<SerializedSceneSaver | null>(null)
   if (!saverRef.current) {
     saverRef.current = new SerializedSceneSaver((projectId, scene, baseRevision) => (
@@ -128,7 +140,14 @@ export default function App() {
     }
     if (!saver.projectId || !saver.scene) return
     try {
-      saveScene(window.localStorage, saver.projectId, saver.scene)
+      const key = storageKey(draftKey(saver.projectId))
+      if (saver.generation <= saver.savedGeneration) {
+        window.localStorage.removeItem(key)
+        window.localStorage.removeItem(`${key}:meta`)
+        return
+      }
+      saveScene(window.localStorage, draftKey(saver.projectId), saver.scene)
+      window.localStorage.setItem(`${key}:meta`, JSON.stringify({ updatedAt: new Date().toISOString() }))
     } catch (error) {
       setAppError(`浏览器恢复副本保存失败：${messageFrom(error)}`)
     }
@@ -148,6 +167,7 @@ export default function App() {
         setConflictNotice(formatSceneConflictMessage(conflictRecoveryPath(conflict)))
         throw conflict
       }
+      setSaveState('版本冲突 · 自动保存暂停')
       const error = new Error('画布磁盘自动保存已因版本冲突暂停')
       setConflictNotice(formatSceneConflictMessage(null))
       throw error
@@ -155,6 +175,8 @@ export default function App() {
 
     try {
       await saver.flush()
+      flushLocalSave()
+      setSaveState(`已保存 · 内容版本 ${saver.revision}`)
       const resolvedDiskError = diskErrorRef.current
       if (resolvedDiskError !== null) {
         diskErrorRef.current = null
@@ -172,6 +194,7 @@ export default function App() {
         diskErrorRef.current = diskError
         setAppError(diskError)
       }
+      setSaveState('尚未保存到本机 · 请保留页面或导出')
       throw error
     }
   }, [flushLocalSave, saver])
@@ -191,13 +214,13 @@ export default function App() {
     revision: number,
     needsDiskSave: boolean,
   ) => {
-    saver.configure(project.id, revision, scene)
+    saver.configure(project.id, revision, needsDiskSave ? null : scene)
     conflictErrorRef.current = null
     diskErrorRef.current = null
     if (scene && needsDiskSave) {
       saver.update(scene)
       try {
-        saveScene(window.localStorage, project.id, scene)
+        saveScene(window.localStorage, draftKey(project.id), scene)
       } catch (error) {
         setAppError(`浏览器恢复副本保存失败：${messageFrom(error)}`)
       }
@@ -209,6 +232,11 @@ export default function App() {
     sessionProjectRef.current = project.id
     setCurrentProjectId(project.id)
     window.localStorage.setItem(LAST_PROJECT_KEY, project.id)
+    const pinnedUrl = new URL(location.href)
+    pinnedUrl.searchParams.delete('projectRoot')
+    pinnedUrl.searchParams.set('project', project.id)
+    window.history.replaceState(null, '', pinnedUrl.pathname + pinnedUrl.search)
+    setSaveState(`已保存 · 内容版本 ${revision}`)
   }, [saver, scheduleDiskSave])
 
   useEffect(() => {
@@ -218,6 +246,8 @@ export default function App() {
       try {
         const launchUrl = new URL(window.location.href)
         const projectRoot = launchUrl.searchParams.get('projectRoot')?.trim() || null
+        const boundBoard = boardId ? await boardRequest<Board>(`/api/boards/${encodeURIComponent(boardId)}`) : null
+        if (boundBoard) setBoard(boundBoard)
         const listedProjects = await client.listProjects()
         const agentProject = projectRoot
           ? await client.registerProjectDirectory(projectRoot)
@@ -228,9 +258,11 @@ export default function App() {
         const project = chooseInitialProject(
           availableProjects,
           window.localStorage.getItem(LAST_PROJECT_KEY),
-          agentProject?.id ?? null,
+          boundBoard?.projectId ?? agentProject?.id ?? launchUrl.searchParams.get('project'),
         )
         if (!project) throw new Error('本地服务没有返回临时画板')
+        const pinned = boundBoard?.projectId ?? launchUrl.searchParams.get('project')
+        if (pinned && project.id !== pinned) throw new Error('绑定的项目不可用，已阻止切换到其他项目')
         if (agentProject) {
           launchUrl.searchParams.delete('projectRoot')
           window.history.replaceState(
@@ -241,7 +273,7 @@ export default function App() {
         }
         const document = await client.loadScene(project.id)
         if (cancelled) return
-        const local = document.scene ? null : loadScene(window.localStorage, project.id)
+        const local = boardId || document.scene ? null : loadScene(window.localStorage, project.id)
         const scene = chooseProjectScene(document.scene, local)
 
         setProjects(availableProjects)
@@ -288,9 +320,8 @@ export default function App() {
         applied = requestId
         sessionsRef.current = []
         setSessions([])
-        setSelectedSessionId(null)
-        if (selectedSessionRef.current.id !== null) submissionAttemptRef.current = null
-        selectedSessionRef.current = { id: null, source: null }
+        // Keep the intended receiver across network failure; never silently retarget.
+        submissionAttemptRef.current = null
         setSessionError(`Agent 会话查询失败：${messageFrom(error)}`)
       }
     }
@@ -317,7 +348,10 @@ export default function App() {
     const toolStyle = toolStylesRef.current(appState)
     if (toolStyle) apiRef.current?.updateScene({ appState: toolStyle })
     const scene = captureScene(elements, appState, files)
+    const previousGeneration = saver.generation
     saver.update(scene)
+    if (saver.generation === previousGeneration) return
+    setSaveState('有修改 · 等待保存')
     submissionAttemptRef.current = null
     setCanvasEmpty(!hasSceneContent(scene))
 
@@ -434,7 +468,7 @@ export default function App() {
 
   const handleSubmit = useCallback(async () => {
     if (submittingRef.current || switchingRef.current || !saver.projectId) return
-    if (sessionsRef.current.length > 1 && !selectedSessionRef.current.id) {
+    if (!boardId && ((sessionsRef.current.length > 1 && !selectedSessionRef.current.id) || (selectedSessionRef.current.id && !sessionsRef.current.some(s => s.id === selectedSessionRef.current.id)))) {
       setAppError('请先选择要发送给的 Agent')
       return
     }
@@ -514,7 +548,7 @@ export default function App() {
       if (diskTimerRef.current) window.clearTimeout(diskTimerRef.current)
       if (saver.projectId && saver.scene) {
         try {
-          saveScene(window.localStorage, saver.projectId, saver.scene)
+          if (saver.generation > saver.savedGeneration) saveScene(window.localStorage, draftKey(saver.projectId), saver.scene)
         } catch {
           // The page is leaving; the active UI can no longer surface this failure.
         }
@@ -543,6 +577,8 @@ export default function App() {
 
   return (
     <main className="app-shell" aria-label="Excalidraw 本地画板">
+      <div className="canvas-workspace">
+      <div className="workspace-brand" aria-label="AgentCanvas 本地画板"><InterfaceIcon name="canvas" /><strong>AgentCanvas</strong><span>LOCAL</span></div>
       <Excalidraw
         key={currentProject.id}
         initialData={{
@@ -562,7 +598,30 @@ export default function App() {
         langCode="zh-CN"
       />
       <PartialEraser key={currentProject.id} api={canvasApi} />
+      </div>
       <AgentPanel
+        bound={Boolean(boardId)}
+        boardName={board?.name}
+        conversation={board?.conversation ?? null}
+        onBrowseBoards={() => setHistoryRequest(value => value + 1)}
+        elementCount={saver.scene?.elements.filter(element => element && typeof element === 'object' && !(element as { isDeleted?: boolean }).isDeleted).length ?? 0}
+        revision={saver.revision}
+        management={<BoardManagement onBoardRefresh={refreshBoardIdentity} historyRequest={historyRequest} board={board} projectId={currentProject.id} windowId={windowId} saveState={saveState} error={conflictNotice ?? appError}
+          onRestoreDraft={scene => {
+            flushLocalSave()
+            const api = apiRef.current
+            if (!api) return
+            api.addFiles(Object.values(scene.files) as unknown as Parameters<ExcalidrawImperativeAPI['addFiles']>[0])
+            api.updateScene({ elements: restoreElements(scene.elements as OrderedExcalidrawElement[], null), appState: { ...api.getAppState(), ...scene.appState }, captureUpdate: CaptureUpdateAction.IMMEDIATELY })
+          }}
+          onRetrySave={() => flushDiskSave()}
+          onExport={() => {
+            if (!saver.scene) return
+            const url = URL.createObjectURL(new Blob([JSON.stringify(saver.scene, null, 2)], { type: 'application/json' }))
+            const link = document.createElement('a'); link.href = url; link.download = `${board?.name ?? '画板副本'}.excalidraw`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+          }}
+          onOpen={async id => { flushLocalSave(); await flushDiskSave(); location.assign(`/?board=${encodeURIComponent(id)}`) }}
+        />}
         projects={projects}
         currentProjectId={currentProject.id}
         sessions={sessions}

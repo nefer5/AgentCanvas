@@ -54,7 +54,7 @@ describe('AgentPanel', () => {
     expect(html).toContain('发送当前画板')
     expect(html).toContain('C:\\Users\\tester\\AppData\\Local\\ExcalidrawAgentBridge\\scratch')
     expect(html).toContain('maxLength="4000"')
-    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>发送当前画板<\/button>/)
+    expect(html).not.toMatch(/<button class="agent-panel__submit"[^>]*disabled=""[^>]*>[\s\S]*?发送当前画板<\/button>/)
   })
 
   it('renders online and received status copy with a polite live region', () => {
@@ -87,8 +87,8 @@ describe('AgentPanel', () => {
     const busy = render({ busy: true })
 
     expect(pending).toContain('已保存到待处理箱，Agent 尚未读取')
-    expect(pending).toMatch(/<button[^>]*disabled=""[^>]*>发送当前画板<\/button>/)
-    expect(busy).toMatch(/<button[^>]*disabled=""[^>]*>发送当前画板<\/button>/)
+    expect(pending).toMatch(/<button class="agent-panel__submit"[^>]*disabled=""[^>]*>[\s\S]*?发送当前画板<\/button>/)
+    expect(busy).toMatch(/<button class="agent-panel__submit"[^>]*disabled=""[^>]*>[\s\S]*?发送当前画板<\/button>/)
   })
 
   it('requires an explicit target when multiple sessions are waiting', () => {
@@ -104,8 +104,8 @@ describe('AgentPanel', () => {
     expect(one).not.toContain('发送给')
     expect(many).toContain('发送给')
     expect(many).toContain('请选择 Agent')
-    expect(many).toMatch(/<button[^>]*disabled=""[^>]*>发送当前画板<\/button>/)
-    expect(selected).not.toMatch(/<button[^>]*disabled=""[^>]*>发送当前画板<\/button>/)
+    expect(many).toMatch(/<button class="agent-panel__submit"[^>]*disabled=""[^>]*>[\s\S]*?发送当前画板<\/button>/)
+    expect(selected).not.toMatch(/<button class="agent-panel__submit"[^>]*disabled=""[^>]*>[\s\S]*?发送当前画板<\/button>/)
   })
 
   it('surfaces errors in the polite status region', () => {

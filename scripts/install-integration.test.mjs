@@ -25,7 +25,7 @@ test('isolated installer integration preserves unmanaged and user-modified skill
     '-Action', 'Install', '-InstallRoot', installRoot, '-Version', version, '-UserHome', userHome, '-WithSkills', '-SkipPathUpdate'], { windowsHide: true })
   await run('0.1.0')
   const managed = join(userHome, '.agents/skills/agent-canvas/SKILL.md')
-  assert.match(await readFile(managed, 'utf8'), /Agent Canvas/)
+  assert.equal(await readFile(managed, 'utf8'), await readFile(join(installRoot, 'skills/agent-canvas/SKILL.md'), 'utf8'))
   assert.equal(await readFile(unmanaged, 'utf8'), 'UNMANAGED')
   await run('0.1.1')
   const marker = JSON.parse(await readFile(join(userHome, '.agents/skills/agent-canvas/.agent-canvas-install.json'), 'utf8').then(s => s.replace(/^\uFEFF/, '')))

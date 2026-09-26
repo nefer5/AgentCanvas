@@ -19,6 +19,7 @@ const files = [
   ['scripts/lib', 'app/scripts/lib'],
   ...['agent-canvas.mjs','server.mjs','start-excalidraw.ps1','stop-excalidraw.ps1'].map(n => [`scripts/${n}`, `app/scripts/${n}`]),
   ['package.json', 'app/package.json'], ['LICENSE', 'LICENSE'],
+  ['docs/getting-started.md', 'docs/getting-started.md'],
   ['skills/agent-canvas/SKILL.md', 'skills/agent-canvas/SKILL.md'],
   ...['agent-canvas.cmd','Start AgentCanvas.cmd','integration.ps1','README-install.md'].map(n => [`packaging/windows/${n}`, n]),
 ]

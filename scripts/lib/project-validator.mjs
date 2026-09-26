@@ -1,6 +1,7 @@
 import { lstat, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { readJsonOptional } from './atomic-files.mjs'
+import { recoverVersionRecycle } from './version-recycle.mjs'
 
 export const WORKSPACE_DIRS = ['current', 'inbox', 'processed', 'versions', 'candidates']
 export const PROJECT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -141,9 +142,6 @@ export async function validateRegisteredProject(entry, {
   })
   const canvasDir = join(root.canonicalPath, '.agent-canvas')
   await inspectDirectory(canvasDir, 'Agent Canvas directory')
-  for (const name of WORKSPACE_DIRS) {
-    await inspectDirectory(join(canvasDir, name), `Agent Canvas ${name} directory`)
-  }
   const document = await readSafeProjectDocument(canvasDir, readJson, { required: true })
   let documentId
   try {
@@ -153,6 +151,10 @@ export async function validateRegisteredProject(entry, {
   }
   if (documentId !== id) {
     throw projectError('PROJECT_ID_MISMATCH', `Agent Canvas project ID does not match ${id}`)
+  }
+  await recoverVersionRecycle(canvasDir)
+  for (const name of WORKSPACE_DIRS) {
+    await inspectDirectory(join(canvasDir, name), `Agent Canvas ${name} directory`)
   }
   return {
     id,

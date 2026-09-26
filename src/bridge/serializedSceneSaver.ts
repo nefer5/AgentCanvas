@@ -10,6 +10,7 @@ export class SerializedSceneSaver {
   private activeFlush: Promise<void> | null = null
   private diskPaused = false
   private latestScene: SceneSnapshot | null = null
+  private latestSerialized: string | null = null
   private latestGeneration = 0
   private persistedGeneration = 0
   private sceneRevision = 0
@@ -47,6 +48,7 @@ export class SerializedSceneSaver {
     }
     this.activeProjectId = projectId
     this.latestScene = scene
+    this.latestSerialized = scene ? JSON.stringify(scene) : null
     this.sceneRevision = revision
     this.latestGeneration = 0
     this.persistedGeneration = 0
@@ -57,6 +59,9 @@ export class SerializedSceneSaver {
     if (!this.activeProjectId) {
       throw new Error('Cannot update a scene before configuring its project')
     }
+    const serialized = JSON.stringify(scene)
+    if (serialized === this.latestSerialized) return this.latestGeneration
+    this.latestSerialized = serialized
     this.latestScene = scene
     this.latestGeneration += 1
     return this.latestGeneration

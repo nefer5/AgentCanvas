@@ -61,6 +61,7 @@ export function reconcileSessionSelection(
   sessions: AgentSessionSummary[],
   current: SessionSelection,
 ): SessionSelection {
+  if (current.id && !sessions.some(session => session.id === current.id)) return current
   if (sessions.length === 0) return { id: null, source: null }
   if (sessions.length === 1) {
     if (current.source === 'manual' && current.id === sessions[0].id) return current

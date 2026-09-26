@@ -58,7 +58,7 @@ async function requestJson<T>(
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetchImpl(path, { ...init, headers })
+  const response = await fetchImpl(path, { ...init, signal: init.signal ?? AbortSignal.timeout(15_000), headers })
   const body = await response.text()
   let parsed: unknown
   let malformed = false
@@ -100,7 +100,11 @@ async function requestJson<T>(
 
 export function createBridgeClient(
   fetchImpl: typeof fetch = window.fetch.bind(window),
+  boardId: string | null = null,
 ): BridgeClient {
+  const scenePath = (projectId: string) => boardId
+    ? `/api/boards/${encodeURIComponent(boardId)}/scene`
+    : `/api/projects/${encodeURIComponent(projectId)}/scene`
   return {
     async listProjects() {
       const result = await requestJson<{ projects: ProjectSummary[] }>(
@@ -141,7 +145,7 @@ export function createBridgeClient(
     loadScene(projectId) {
       return requestJson<SceneDocument>(
         fetchImpl,
-        `/api/projects/${encodeURIComponent(projectId)}/scene`,
+        scenePath(projectId),
         { cache: 'no-store' },
       )
     },
@@ -149,7 +153,7 @@ export function createBridgeClient(
     saveScene(projectId, scene: SceneSnapshot, baseRevision) {
       return requestJson<Omit<SceneDocument, 'scene'>>(
         fetchImpl,
-        `/api/projects/${encodeURIComponent(projectId)}/scene`,
+        scenePath(projectId),
         {
           method: 'PUT',
           body: JSON.stringify({ scene, baseRevision }),
@@ -158,6 +162,10 @@ export function createBridgeClient(
     },
 
     async listAgentSessions(projectId) {
+      if (boardId) {
+        const status = await requestJson<{ receiverOnline: boolean; board: { conversation: string | null }; checkedAt: string }>(fetchImpl, `/api/boards/${encodeURIComponent(boardId)}/status`)
+        return status.receiverOnline ? [{ id: boardId, projectId, label: status.board.conversation ?? '当前画板接收者', createdAt: status.checkedAt, expiresAt: status.checkedAt }] : []
+      }
       const result = await requestJson<{ sessions: AgentSessionSummary[] }>(
         fetchImpl,
         `/api/projects/${encodeURIComponent(projectId)}/agent-sessions`,
@@ -169,7 +177,7 @@ export function createBridgeClient(
     submitScene(projectId, submission: SceneSubmission) {
       return requestJson<SubmissionResult>(
         fetchImpl,
-        `/api/projects/${encodeURIComponent(projectId)}/submissions`,
+        boardId ? `/api/boards/${encodeURIComponent(boardId)}/submissions` : `/api/projects/${encodeURIComponent(projectId)}/submissions`,
         { method: 'POST', body: JSON.stringify(submission) },
       )
     },

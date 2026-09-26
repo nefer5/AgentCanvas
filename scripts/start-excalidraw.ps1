@@ -1,5 +1,6 @@
 param(
     [switch]$NoBrowser,
+    [switch]$Repair,
     [ValidateRange(1, 65535)]
     [int]$Port = 4173
 )
@@ -118,8 +119,18 @@ function Stop-TrackedStaleServer {
     }
 }
 
-if (-not (Test-ExcalidrawServer)) {
-    Stop-TrackedStaleServer
+$launchMutex = [Threading.Mutex]::new($false, "Local\AgentCanvas-Launcher-$Port")
+$ownsLaunchMutex = $false
+try {
+    try { $ownsLaunchMutex = $launchMutex.WaitOne(30000) }
+    catch [Threading.AbandonedMutexException] { $ownsLaunchMutex = $true }
+    if (-not $ownsLaunchMutex) { throw 'Another AgentCanvas launch is still running; retry shortly.' }
+
+if ($Repair -or -not (Test-ExcalidrawServer)) {
+    if ($Repair) { Stop-TrackedStaleServer }
+    elseif ((Get-LoopbackListenerProcessId) -gt 0) {
+        throw "Port $Port has an unresponsive or incompatible service. No process was stopped. Inspect active chats before using -Repair."
+    }
     $node = (Get-Command node.exe -ErrorAction Stop).Source
     $serverScriptArgument = if ($serverScript -match '\s') { "`"$serverScript`"" } else { $serverScript }
     $server = Start-Process `
@@ -150,4 +161,9 @@ if (-not (Test-ExcalidrawServer)) {
 
 if (-not $NoBrowser) {
     Start-Process $url
+}
+
+} finally {
+    if ($ownsLaunchMutex) { $launchMutex.ReleaseMutex() }
+    $launchMutex.Dispose()
 }

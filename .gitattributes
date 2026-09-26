@@ -4,3 +4,4 @@
 *.ps1 text eol=crlf
 docs/archive/ export-ignore
 reports/ export-ignore
+docs/compatibility-concurrency-audit.md export-ignore

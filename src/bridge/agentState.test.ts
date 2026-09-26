@@ -27,11 +27,11 @@ function session(id: string): AgentSessionSummary {
 describe('agent session selection', () => {
   const none: SessionSelection = { id: null, source: null }
 
-  it('clears any target when no sessions are waiting', () => {
+  it('preserves intended target when no sessions are waiting', () => {
     expect(reconcileSessionSelection([], {
       id: 'session-1',
       source: 'manual',
-    })).toEqual(none)
+    })).toEqual({ id: 'session-1', source: 'manual' })
   })
 
   it('automatically selects the sole waiting session and records its provenance', () => {
@@ -59,21 +59,21 @@ describe('agent session selection', () => {
     expect(reconcileSessionSelection(sessions, manual)).toEqual(manual)
   })
 
-  it('clears a disappeared manual target when multiple sessions remain', () => {
+  it('retains an offline manual target when other sessions remain', () => {
     expect(reconcileSessionSelection([
       session('session-1'),
       session('session-2'),
     ], {
       id: 'expired-session',
       source: 'manual',
-    })).toEqual(none)
+    })).toEqual({ id: 'expired-session', source: 'manual' })
   })
 
-  it('auto-selects the new sole session after a manual target disappears', () => {
+  it('never retargets to the sole remaining different agent', () => {
     expect(reconcileSessionSelection([session('session-1')], {
       id: 'expired-session',
       source: 'manual',
-    })).toEqual({ id: 'session-1', source: 'auto' })
+    })).toEqual({ id: 'expired-session', source: 'manual' })
   })
 })
 

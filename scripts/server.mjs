@@ -8,6 +8,10 @@ import { createSceneStore } from './lib/scene-store.mjs'
 import { SessionBroker } from './lib/session-broker.mjs'
 import { createSubmissionStore } from './lib/submission-store.mjs'
 import { selectWindowsFolder } from './lib/windows-folder-picker.mjs'
+import { homedir } from 'node:os'
+import { createBoardStore } from './lib/board-store.mjs'
+import { createServer as createPipeServer } from 'node:net'
+import { createHash } from 'node:crypto'
 
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -69,7 +73,8 @@ export function startServer({
   const sceneStore = createSceneStore({ validateProject })
   const submissionStore = createSubmissionStore({ validateProject })
   const broker = new SessionBroker()
-  const api = createBridgeApi({ registry, sceneStore, submissionStore, broker, selectDirectory })
+  const boardStore = createBoardStore({ registry, dataRoot: dataRoot ?? resolve(process.env.LOCALAPPDATA || homedir(), 'ExcalidrawAgentBridge') })
+  const api = createBridgeApi({ registry, sceneStore, submissionStore, broker, selectDirectory, boardStore })
 
   function serveStatic(request, response, requestUrl) {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -137,13 +142,24 @@ export function startServer({
       })
   })
 
-  server.bridge = { api, broker, registry, sceneStore, submissionStore }
+  server.bridge = { api, broker, registry, sceneStore, submissionStore, boardStore }
 
-  server.listen(port, host, () => {
+  const listen = () => server.listen(port, host, () => {
     const address = server.address()
     const listeningPort = typeof address === 'object' && address ? address.port : port
     console.log(`Excalidraw Local: http://${host}:${listeningPort}`)
   })
+  if (process.platform === 'win32') {
+    // OS-owned named pipe acts as an instance lock; process death releases it.
+    // A second HTTP port must not bypass ownership of the same data catalog.
+    const identity = resolve(dataRoot ?? resolve(process.env.LOCALAPPDATA || homedir(), 'ExcalidrawAgentBridge')).toLowerCase()
+    const key = createHash('sha256').update(identity).digest('hex').slice(0, 24)
+    const lock = createPipeServer(socket => socket.destroy())
+    lock.once('error', error => server.emit('error', Object.assign(new Error(`AgentCanvas data directory already in use: ${error.message}`), { code: 'STORE_IN_USE' })))
+    server.once('close', () => lock.close())
+    server.once('error', () => lock.close())
+    lock.listen(`\\\\.\\pipe\\agentcanvas-${key}`, listen)
+  } else listen()
   return server
 }
 

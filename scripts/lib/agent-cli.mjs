@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { normalizeProjectId } from './project-validator.mjs'
+import { isBoardCommand, runBoardCli } from './board-cli.mjs'
+import { request as httpRequest } from 'node:http'
 
 const API_BASE = 'http://127.0.0.1:4173'
 const HEALTH_TIMEOUT_MS = 750
@@ -22,6 +24,12 @@ const TOP_LEVEL_HELP = `Agent Canvas CLI ${CLI_VERSION}
   agent-canvas --version
 
 命令:
+  open       可见地打开并绑定当前聊天的独立画板（推荐）
+  doctor     检查服务和协议，不领取任务
+  status     查看绑定画板的真实状态
+  receive    默认等待120秒领取绑定画板提交，有提交立即返回
+  renew      为正在处理的画板提交续租
+  release    释放当前领取
   wait       等待当前项目的下一次画板提交
   inbox      领取当前项目待处理箱中最早的提交
   complete   将一条已处理提交标记为完成
@@ -39,6 +47,12 @@ const TOP_LEVEL_HELP = `Agent Canvas CLI ${CLI_VERSION}
   帮助和版本查询不要求本地服务正在运行。
 
 示例:
+  agent-canvas open --project E:\\work --conversation "opencode:<聊天ID>"
+  打开成功后先提醒用户画完点击提交，再执行:
+  agent-canvas receive --project E:\\work --board <board-id> --timeout 120
+  agent-canvas status --project E:\\work --board <board-id>
+
+旧项目画布示例（不用于新绑定画板）:
   agent-canvas wait --project E:\\work --label "Codex 当前任务"
   agent-canvas inbox --project E:\\work
   agent-canvas complete <submission-id> --project E:\\work
@@ -215,7 +229,7 @@ export function parseCliArgs(args) {
   throw argumentError(`Unknown command: ${command}`)
 }
 
-export async function findProject(startPath) {
+export async function findProject(startPath, { ancestors = false } = {}) {
   const resolvedStart = resolve(startPath)
   let startInfo
   try {
@@ -259,6 +273,7 @@ export async function findProject(startPath) {
     }
 
     const parent = dirname(directory)
+    if (!ancestors) break
     if (parent === directory) break
     directory = parent
   }
@@ -383,6 +398,7 @@ function diagnosticMessage(error) {
 }
 
 export async function runAgentCli(args, dependencies) {
+  if (isBoardCommand(args)) return runBoardCli(args, dependencies)
   const { cwd, ensureServer, fetch, stderr, stdout } = dependencies
   let command
   try {
@@ -407,7 +423,7 @@ export async function runAgentCli(args, dependencies) {
     if (command.command === 'projects') {
       decision = await runProjects(fetch)
     } else {
-      const discoveredProject = await findProject(command.project ?? cwd)
+      const discoveredProject = await findProject(command.project ?? cwd, { ancestors: command.project === undefined })
       const project = await relocateProject(discoveredProject, fetch)
       if (command.command === 'wait') decision = await runWait(command, project, fetch)
       if (command.command === 'inbox') decision = await runInbox(project, fetch)
@@ -434,8 +450,26 @@ async function healthAvailable(fetch) {
   }
 }
 
+export function legacyWaitFetch(url, init = {}) {
+  return new Promise((resolve, reject) => {
+      const request = httpRequest(url, { method: 'GET', headers: init.headers }, response => {
+        const chunks = []
+        response.on('data', chunk => chunks.push(chunk))
+        response.on('error', reject)
+        response.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: response.statusCode, headers: response.headers })))
+      })
+      request.setTimeout(3_610_000, () => request.destroy(new Error('Legacy wait transport timed out')))
+      request.on('error', reject); request.end()
+    })
+}
+
 export function createDefaultDependencies(options = {}) {
-  const fetch = options.fetch ?? globalThis.fetch
+  // Legacy wait has a 10-minute business deadline. Native fetch's 5-minute
+  // response-header timeout is unsuitable for that single long response.
+  const fetch = options.fetch ?? ((url, init = {}) => {
+    if (!/^http:\/\/127\.0\.0\.1:4173\/api\/agent-sessions\/[^/]+\/wait$/.test(String(url))) return globalThis.fetch(url, init)
+    return legacyWaitFetch(url, init)
+  })
   const execFile = options.execFile ?? execFileAsync
   return {
     fetch,

@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto'
+import { saveBoundedSnapshot, snapshotUsage, SNAPSHOT_POLICY } from './bounded-snapshots.mjs'
 import { lstat, readdir, realpath, unlink } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { readJsonOptional, writeJsonAtomic } from './atomic-files.mjs'
 import { KeyedSerializer } from './keyed-serializer.mjs'
 import { pathKey, tryNormalizeProjectId } from './project-validator.mjs'
+import { recoverVersionRecycle, previewVersions } from './version-recycle.mjs'
 
 const REVISION_POINTER_PATTERN = /^versions\/revision-([1-9][0-9]*)-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.excalidraw$/
 
@@ -36,6 +37,7 @@ export function validateSceneSaveInput(input) {
     throw new TypeError('Scene save input is required')
   }
   if (!validateScene(input.scene)) throw new TypeError('Invalid Excalidraw scene')
+  if (Buffer.byteLength(JSON.stringify({ revision: Number.MAX_SAFE_INTEGER, scene: input.scene }, null, 2)) > 32 * 1024 * 1024) throw new TypeError('Scene exceeds the 32 MiB storage limit')
   if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
     throw new TypeError('baseRevision must be a non-negative integer')
   }
@@ -156,6 +158,7 @@ export function createSceneStore({
   validateProject = async (project) => project,
 } = {}) {
   async function loadValidated(project) {
+    await recoverVersionRecycle(project.canvasDir)
     const currentDir = await inspectSafeDirectory(
       join(project.canvasDir, 'current'),
       'Current scene directory',
@@ -173,6 +176,7 @@ export function createSceneStore({
         'Scene versions directory',
       )
       const hasCommittedHistory = await hasCommittedRevisionHistory(versionsDir)
+        || (await readdir(currentDir)).some(name => /^scene-[ab]\.excalidraw$/.test(name))
       const mirror = await readSafeJson(
         join(currentDir, 'scene.excalidraw'),
         currentDir,
@@ -210,6 +214,13 @@ export function createSceneStore({
       }
     }
 
+    if (metadata.schemaVersion === 3) {
+      if (!Number.isInteger(metadata.revision) || metadata.revision < 1 || !validTimestamp(metadata.updatedAt)
+        || !/^current\/scene-[ab]\.excalidraw$/.test(metadata.scenePath ?? '')) throw corrupt('Invalid bounded scene metadata')
+      const committed = await readSafeJson(join(project.canvasDir, ...metadata.scenePath.split('/')), currentDir, 'Current scene slot', readJson)
+      if (committed.value?.revision !== metadata.revision || !validateScene(committed.value?.scene)) throw corrupt('Current scene slot revision mismatch')
+      return { scene: committed.value.scene, revision: metadata.revision, updatedAt: metadata.updatedAt }
+    }
     const scenePath = revisionPointer(metadata)
     const versionsDir = await inspectSafeDirectory(
       join(project.canvasDir, 'versions'),
@@ -229,9 +240,11 @@ export function createSceneStore({
   }
 
   async function load(project) {
+    return serializer.run(sceneKey(project), async () => {
     const guarded = await validateProject(project)
     if (!guarded) throw new TypeError('Project validation returned no project')
     return loadValidated(guarded)
+    })
   }
 
   async function save(project, input) {
@@ -241,28 +254,25 @@ export function createSceneStore({
       if (!guarded) throw new TypeError('Project validation returned no project')
       const current = await loadValidated(guarded)
       if (current.revision !== baseRevision) {
-        const stamp = now().toISOString().replace(/[-:.]/g, '')
-        const recoveryPath = join(
-          guarded.canvasDir,
-          'versions',
-          `conflict-${stamp}-${randomUUID()}.excalidraw`,
-        )
-        await writeJson(recoveryPath, scene, { createParent: false })
+        const recoveryPath = await saveBoundedSnapshot(guarded.canvasDir, scene, current.revision, now().toISOString(), 'conflict')
         throw new SceneConflictError(current.revision, recoveryPath)
       }
+      if (JSON.stringify(current.scene) === JSON.stringify(scene)) return { revision: current.revision, updatedAt: current.updatedAt }
 
       const revision = current.revision + 1
       const updatedAt = now().toISOString()
-      const scenePath = `versions/revision-${revision}-${randomUUID()}.excalidraw`
+      const previousMetadata = await readJson(join(guarded.canvasDir, 'current', 'metadata.json'))
+      const nextSlot = previousMetadata?.scenePath === 'current/scene-a.excalidraw' ? 'b' : 'a'
+      const scenePath = `current/scene-${nextSlot}.excalidraw`
       const committedPath = join(guarded.canvasDir, ...scenePath.split('/'))
       await writeJson(
         committedPath,
-        scene,
+        { revision, scene },
         { createParent: false },
       )
       try {
         await writeJson(join(guarded.canvasDir, 'current', 'metadata.json'), {
-          schemaVersion: 2,
+          schemaVersion: 3,
           revision,
           updatedAt,
           scenePath,
@@ -289,9 +299,22 @@ export function createSceneStore({
       } catch {
         // The compatibility mirror is derived; the committed pointer stays authoritative.
       }
-      return { revision, updatedAt }
+      let historyWarning = null
+      try { await saveBoundedSnapshot(guarded.canvasDir, scene, revision, updatedAt) }
+      catch (error) { historyWarning = `History checkpoint failed: ${error.message}` }
+      return { revision, updatedAt, ...(historyWarning ? { historyWarning } : {}) }
     })
   }
 
-  return { load, save, validateSaveInput: validateSceneSaveInput }
+  async function versions(project, input = null) {
+    return serializer.run(sceneKey(project), async () => {
+      const guarded = await validateProject(project)
+      if (!guarded) throw new TypeError('Project validation returned no project')
+      await loadValidated(guarded)
+      if (input) throw Object.assign(new Error('旧版迁移式整理已停用；新快照自动按固定上限轮换'), { status: 410, code: 'LEGACY_ROTATION_DISABLED' })
+      const { keepNames, ...plan } = await previewVersions(guarded.canvasDir)
+      return { ...plan, snapshots: await snapshotUsage(guarded.canvasDir), policy: SNAPSHOT_POLICY }
+    })
+  }
+  return { load, save, versions, validateSaveInput: validateSceneSaveInput }
 }

@@ -215,6 +215,7 @@ function launcherArguments(startScript, port) {
     '-File',
     startScript,
     '-NoBrowser',
+    '-Repair',
     '-Port',
     String(port),
   ]
@@ -327,7 +328,7 @@ test('parseCliArgs rejects unknown, missing, duplicate, and out-of-range argumen
 
 test('findProject walks upward from a descendant and uses the discovered root', async (t) => {
   const fixture = await createProjectFixture(t)
-  const project = await findProject(fixture.descendant)
+  const project = await findProject(fixture.descendant, { ancestors: true })
 
   assert.equal(project.projectId, fixture.projectId)
   assert.equal(project.rootPath, resolve(fixture.rootPath))
@@ -337,7 +338,7 @@ test('findProject walks upward from a descendant and uses the discovered root', 
 test('findProject normalizes an uppercase on-disk UUID', async (t) => {
   const fixture = await createProjectFixture(t, 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA')
 
-  const project = await findProject(fixture.descendant)
+  const project = await findProject(fixture.descendant, { ancestors: true })
 
   assert.equal(project.projectId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 })
@@ -655,7 +656,7 @@ test('default ensureServer rejects a service that remains incompatible after lau
   assert.equal(healthChecks, 2)
 })
 
-test('PowerShell launcher replaces a tracked legacy project server and waits for API health', {
+test('PowerShell explicit repair replaces a tracked legacy project server and waits for API health', {
   timeout: 25_000,
 }, async (t) => {
   const fixture = await createLauncherFixture()
@@ -682,6 +683,9 @@ test('PowerShell launcher replaces a tracked legacy project server and waits for
   }, 'Legacy fixture did not start')
   assert.equal(await apiHealth(port), false)
   await writeFile(pidFile, String(legacy.pid))
+
+  await assert.rejects(execFileAsync('powershell.exe', launcherArguments(fixture.startScript, port).filter(arg => arg !== '-Repair'), { windowsHide: true }), /No process was stopped|unresponsive|incompatible/)
+  assert.equal(processIsAlive(legacy.pid), true)
 
   await execFileAsync('powershell.exe', launcherArguments(fixture.startScript, port), {
     timeout: 20_000,
@@ -776,7 +780,7 @@ test('PowerShell launcher accepts only a top-level object with literal boolean t
       assert.equal(await apiHealth(port), !healthCase.shouldReplace)
       await writeFile(pidFile, String(initialServer.pid))
 
-      await execFileAsync('powershell.exe', launcherArguments(fixture.startScript, port), {
+      await execFileAsync('powershell.exe', launcherArguments(fixture.startScript, port).filter(arg => healthCase.shouldReplace || arg !== '-Repair'), {
         timeout: 10_000,
         windowsHide: true,
       })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {releaseEntries,releaseName,assertSafeTarget} from './lib/release.mjs'
 test('release payload is explicit and never includes local data or Node',()=>{
   const targets=releaseEntries().map(e=>e.target)
-  for(const required of ['app/dist','app/package.json','LICENSE','skills/agent-canvas/SKILL.md','agent-canvas.cmd'])assert.ok(targets.includes(required))
+  for(const required of ['app/dist','app/package.json','LICENSE','skills/agent-canvas/SKILL.md','agent-canvas.cmd','docs/getting-started.md','README-install.md'])assert.ok(targets.includes(required))
   assert.ok(!targets.some(p=>/node_modules|node\.exe|\.agent-canvas|\.git|artifacts/.test(p)))
 })
 test('unsafe release paths and invalid versions are rejected',()=>{

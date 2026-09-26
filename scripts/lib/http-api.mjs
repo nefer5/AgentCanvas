@@ -6,6 +6,14 @@ import {
 
 const MAX_JSON_BYTES = 32 * 1024 * 1024
 const API_ROUTES = [
+  [/^\/api\/boards$/, ['GET', 'POST']],
+  [/^\/api\/boards\/[^/]+$/, ['GET', 'PATCH']],
+  [/^\/api\/boards\/[^/]+\/scene$/, ['GET', 'PUT']],
+  [/^\/api\/boards\/[^/]+\/(status|trash-preview)$/, ['GET']],
+  [/^\/api\/boards\/[^/]+\/(presence|launch|submissions|receive|complete|renew|release|trash|restore|release-windows)$/, ['POST']],
+  [/^\/api\/launches\/[^/]+$/, ['GET']],
+  [/^\/api\/status$/, ['GET']],
+  [/^\/api\/(boards|projects)\/[^/]+\/versions$/, ['GET', 'POST']],
   [/^\/api\/health$/, ['GET', 'HEAD']],
   [/^\/api\/projects$/, ['GET']],
   [/^\/api\/projects\/select-folder$/, ['POST']],
@@ -158,6 +166,10 @@ function classifyApiPath(pathname) {
 }
 
 function sendMappedError(response, error) {
+  if (Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 && typeof error.code === 'string') {
+    sendError(response, error.status, error.code, error.message)
+    return
+  }
   if (error instanceof ApiError) {
     sendError(response, error.status, error.code, error.message, {
       details: error.details,
@@ -229,6 +241,7 @@ export function createBridgeApi({
   submissionStore,
   broker,
   selectDirectory,
+  boardStore,
 }) {
   async function waitForAgentSession(request, response, sessionId, token) {
     let disconnected = false
@@ -266,6 +279,64 @@ export function createBridgeApi({
 
     if (pathname === '/api/health') {
       sendJson(response, 200, { ok: true }, { head: method === 'HEAD' })
+      return true
+    }
+
+    if (pathname === '/api/status') {
+      sendJson(response, 200, { ok: true, protocol: 2, epoch: boardStore?.epoch, capabilities: ['boards', 'trash', 'restore', 'bound-receive'], checkedAt: new Date().toISOString() })
+      return true
+    }
+    if (pathname === '/api/boards') {
+      if (method === 'GET') {
+        const params = new URL(request.url, 'http://127.0.0.1').searchParams
+        sendJson(response, 200, await boardStore.list({ projectId: params.get('projectId'), state: params.get('state'), query: params.get('q') ?? '', offset: Number(params.get('offset') ?? 0), limit: Number(params.get('limit') ?? 12) }))
+      }
+      else sendJson(response, 201, await boardStore.open(await readJson(request)))
+      return true
+    }
+    const launchMatch = /^\/api\/launches\/([^/]+)$/.exec(pathname)
+    if (launchMatch) {
+      sendJson(response, 200, boardStore.launchStatus(launchMatch[1]))
+      return true
+    }
+    const versionsMatch = /^\/api\/(boards|projects)\/([^/]+)\/versions$/.exec(pathname)
+    if (versionsMatch) {
+      const input = method === 'POST' ? await readJson(request) : null
+      const result = versionsMatch[1] === 'boards'
+        ? await boardStore.versions(versionsMatch[2], input)
+        : await sceneStore.versions(await requireProject(registry, versionsMatch[2]), input)
+      sendJson(response, 200, result)
+      return true
+    }
+    const boardMatch = /^\/api\/boards\/([^/]+)(?:\/([^/]+))?$/.exec(pathname)
+    if (boardMatch) {
+      const [, id, action] = boardMatch
+      let result
+      if (!action) result = method === 'GET' ? await boardStore.get(id) : await boardStore.update(id, await readJson(request))
+      else if (action === 'scene') result = method === 'GET' ? await boardStore.load(id) : await boardStore.save(id, await readJson(request))
+      else if (action === 'status') result = await boardStore.status(id)
+      else if (action === 'trash-preview') result = await boardStore.previewTrash(id)
+      else if (action === 'presence') result = await boardStore.presence(id, await readJson(request))
+      else if (action === 'launch') result = await boardStore.launch(id)
+      else if (action === 'submissions') result = await boardStore.submit(id, await readJson(request))
+      else if (action === 'receive') {
+        const input = await readJson(request)
+        const waitMs = input.waitMs ?? 0
+        if (typeof input.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestId)) throw new TypeError('receive requestId is required')
+        if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > 20_000) throw new TypeError('waitMs must be 0-20000')
+        const deadline = Date.now() + waitMs
+        do {
+          result = await boardStore.receive(id, bearerToken(request), input.requestId)
+          if (result.decision !== 'empty' || Date.now() >= deadline || response.destroyed) break
+          await new Promise(resolve => setTimeout(resolve, 250))
+        } while (true)
+      }
+      else if (['complete', 'renew', 'release'].includes(action)) result = await boardStore.transition(id, bearerToken(request), await readJson(request), action)
+      else if (action === 'trash') result = await boardStore.trash(id, (await readJson(request)).revision)
+      else if (action === 'restore') result = await boardStore.restore(id)
+      else if (action === 'release-windows') result = await boardStore.releaseWindows(id)
+      else throw new ApiError(404, 'NOT_FOUND', 'Unknown board operation')
+      if (!response.destroyed) sendJson(response, 200, result)
       return true
     }
 

@@ -4,6 +4,7 @@ public/fonts/
 release/
 .tools/
 artifacts/
+reports/
 .agent-canvas/
 .superpowers/
 .excalidraw-server*.pid

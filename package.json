@@ -1,7 +1,7 @@
 {
   "name": "excalidraw-local",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.2",
   "type": "module",
   "bin": {
     "agent-canvas": "scripts/agent-canvas.mjs"

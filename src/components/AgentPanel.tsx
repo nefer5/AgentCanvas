@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { InterfaceIcon } from './InterfaceIcon'
 import type {
   AgentSessionSummary,
   ProjectSummary,
@@ -18,6 +19,13 @@ export interface PanelSubmissionResult {
 }
 
 export interface AgentPanelProps {
+  management?: ReactNode
+  bound?: boolean
+  boardName?: string
+  conversation?: string | null
+  onBrowseBoards?(): void
+  elementCount?: number
+  revision?: number
   projects: ProjectSummary[]
   currentProjectId: string
   sessions: AgentSessionSummary[]
@@ -62,7 +70,14 @@ function formatSession(session: AgentSessionSummary): string {
   return `${session.label}（${age}）`
 }
 
+function bindingLabel(conversation: string) {
+  const match = /^(codex|opencode):(.+)$/i.exec(conversation)
+  if (!match) return conversation
+  return `${match[1].toLowerCase() === 'codex' ? 'Codex' : 'OpenCode'} · 会话 ${match[2].slice(0, 8)}`
+}
+
 export function AgentPanel({
+  management, bound = false, boardName, conversation = null, onBrowseBoards, elementCount = 0, revision = 0,
   projects,
   currentProjectId,
   sessions,
@@ -82,7 +97,8 @@ export function AgentPanel({
   const [collapsed, setCollapsed] = useState(startsCollapsed)
   const currentProject = projects.find((project) => project.id === currentProjectId)
   const online = sessions.length > 0
-  const targetRequired = sessions.length > 1 && !selectedSessionId
+  const staleTarget = Boolean(selectedSessionId && !sessions.some(session => session.id === selectedSessionId))
+  const targetRequired = !bound && (sessions.length > 1 && !selectedSessionId || staleTarget)
   const liveMessage = error ?? (lastResult ? resultCopy(lastResult.status) : '')
 
   return (
@@ -91,7 +107,8 @@ export function AgentPanel({
       aria-label="Agent 画板发送面板"
     >
       <header className="agent-panel__header">
-        <h1>Agent</h1>
+        <span className={`agent-panel__mark${error ? ' has-error' : ''}`} title={error ?? undefined}><InterfaceIcon name="canvas" /></span>
+        <div className="agent-panel__heading"><h1 title={boardName ?? 'AgentCanvas'}>{boardName ?? 'AgentCanvas'}</h1><p>画板协作 <span>·</span> 本地工作空间</p></div>
         <button
           className="agent-panel__collapse"
           type="button"
@@ -99,16 +116,23 @@ export function AgentPanel({
           aria-controls="agent-panel-body"
           onClick={() => setCollapsed((value) => !value)}
         >
-          {collapsed ? '展开' : '收起'}
+          <span>{collapsed ? '展开' : '收起'}</span><InterfaceIcon name="chevron" />
         </button>
+        <div className={`chat-binding ${conversation ? 'chat-binding--bound' : 'chat-binding--unbound'}`} aria-label="聊天绑定" title={conversation ?? '未绑定聊天'}>
+          <InterfaceIcon name="link" />
+          <span className="chat-binding__copy"><small>当前绑定</small><strong>{conversation ? bindingLabel(conversation) : '未绑定聊天'}</strong></span>
+          <span className="chat-binding__compact">{conversation ? '已绑定' : '未绑定聊天'}</span>
+        </div>
       </header>
 
       <div id="agent-panel-body" className="agent-panel__body" hidden={collapsed}>
-        <label className="agent-panel__field">
-          <span>项目</span>
+        <section className="workspace-card" aria-label={bound ? '所属工作区' : '当前工作区'}>
+        <div className="panel-section-heading"><span>{bound ? '所属工作区' : '当前工作区'}</span><span className="binding-tag">{bound ? '画板归属' : '项目画板'}</span></div>
+        {bound ? <div className="workspace-readonly"><InterfaceIcon name="folder" /><strong>{currentProject?.name ?? '项目不可用'}</strong></div> : <label className="agent-panel__field">
+          <span className="agent-panel__sr-only">项目</span>
           <select
             value={currentProjectId}
-            disabled={busy}
+            disabled={busy || bound}
             onChange={(event) => void onProjectChange(event.target.value)}
           >
             {projects.map((project) => (
@@ -121,9 +145,9 @@ export function AgentPanel({
               </option>
             ))}
           </select>
-        </label>
+        </label>}
 
-        <div className="agent-panel__project-actions">
+        {!bound && <div className="agent-panel__project-actions">
           <button type="button" disabled={busy} onClick={() => void onAddProject()}>
             添加项目
           </button>
@@ -134,21 +158,23 @@ export function AgentPanel({
           >
             改名
           </button>
-        </div>
+        </div>}
 
         <p
           className="agent-panel__path"
           title={currentProject?.rootPath ?? '未选择项目'}
         >
-          {currentProject?.rootPath ?? '未选择项目'}
+          <InterfaceIcon name="folder" /><span>{currentProject?.rootPath ?? '未选择项目'}</span>
         </p>
+        {bound && <button className="workspace-browse" type="button" onClick={onBrowseBoards}><InterfaceIcon name="history" />打开其他画板<InterfaceIcon name="chevron" /></button>}
 
         <p className={`agent-panel__connection agent-panel__connection--${online ? 'online' : 'offline'}`}>
           <span className="agent-panel__status-dot" aria-hidden="true" />
           <span>{online ? ONLINE_COPY : OFFLINE_COPY}</span>
         </p>
+        </section>
 
-        {sessions.length > 1 ? (
+        {(sessions.length > 1 || staleTarget) && !bound ? (
           <label className="agent-panel__field">
             <span>发送给</span>
             <select
@@ -157,6 +183,7 @@ export function AgentPanel({
               onChange={(event) => onSessionChange(event.target.value || null)}
             >
               <option value="" disabled>请选择 Agent</option>
+              {staleTarget && <option value={selectedSessionId ?? ''}>原接收者已离线，请明确重新选择</option>}
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {formatSession(session)}
@@ -166,16 +193,23 @@ export function AgentPanel({
           </label>
         ) : null}
 
-        <label className="agent-panel__field">
-          <span>给 Agent 的说明（可选）</span>
+        <section className="scene-overview" aria-label="画面概览">
+          <div className="panel-section-heading"><span><InterfaceIcon name="overview" />画面概览</span><span className="overview-count">{elementCount} 个元素</span></div>
+          <p>{canvasEmpty ? '从工具栏开始绘制，或导入已有画板。' : '图形与说明将作为一次完整提交，保留给当前接收目标。'}</p>
+          <span className="scene-revision" title="本画板内部的内容保存版本，不是画板识别号">内容版本 <b>{revision}</b></span>
+        </section>
+        <label className="agent-panel__field agent-composer">
+          <span className="composer-heading"><span>给 Agent 的说明 <small>可选</small></span><span className="agent-panel__counter">{note.length} / 4000</span></span>
           <textarea
+            aria-label="给 Agent 的说明（可选）"
             value={note}
             maxLength={4000}
             rows={4}
             disabled={busy}
+            placeholder="说明你希望关注的部分，或下一步要完成的事情…"
             onChange={(event) => onNoteChange(event.target.value)}
           />
-          <span className="agent-panel__counter">{note.length} / 4000</span>
+          <span className="composer-footer">画面与说明一起发送 <kbd>Ctrl ↵</kbd></span>
         </label>
 
         <button
@@ -185,7 +219,7 @@ export function AgentPanel({
           aria-busy={busy}
           onClick={() => void onSubmit()}
         >
-          发送当前画板
+          <InterfaceIcon name="send" />发送当前画板
         </button>
 
         {lastResult ? (
@@ -195,6 +229,7 @@ export function AgentPanel({
           </p>
         ) : null}
       </div>
+      {management}
       <p
         className={`agent-panel__live${error ? ' agent-panel__live--error' : ''}${collapsed ? ' agent-panel__live--collapsed' : ''}`}
         role="status"

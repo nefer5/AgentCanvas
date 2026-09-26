@@ -22,6 +22,15 @@ function deferred<T>() {
 }
 
 describe('SerializedSceneSaver', () => {
+  it('does not create generations or writes for unchanged rerenders', async () => {
+    let writes = 0
+    const saver = new SerializedSceneSaver(async () => ({ revision: ++writes }))
+    saver.configure('board-a', 1, scene('same'))
+    saver.update(scene('same'))
+    await saver.flush()
+    expect(writes).toBe(0)
+    expect(saver.generation).toBe(0)
+  })
   it('drains the newest generation after an in-flight save using the returned revision', async () => {
     const first = deferred<{ revision: number }>()
     const second = deferred<{ revision: number }>()

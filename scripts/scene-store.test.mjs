@@ -102,12 +102,12 @@ test('saves and loads a monotonically revisioned scene', async (t) => {
   assert.deepEqual((await store.load(project)).scene, secondScene)
 
   const metadata = JSON.parse(await readFile(join(project.canvasDir, 'current', 'metadata.json'), 'utf8'))
-  assert.equal(metadata.schemaVersion, 2)
+  assert.equal(metadata.schemaVersion, 3)
   assert.equal(metadata.revision, 2)
   assert.equal(metadata.updatedAt, '2026-07-12T10:00:00.000Z')
-  assert.match(metadata.scenePath, /^versions\/revision-2-[0-9a-f-]+\.excalidraw$/)
+  assert.match(metadata.scenePath, /^current\/scene-[ab]\.excalidraw$/)
   assert.deepEqual(
-    JSON.parse(await readFile(join(project.canvasDir, ...metadata.scenePath.split('/')), 'utf8')),
+    JSON.parse(await readFile(join(project.canvasDir, ...metadata.scenePath.split('/')), 'utf8')).scene,
     secondScene,
   )
 })
@@ -203,7 +203,7 @@ test('cleans a failed revision and preserves the prior commit when pointer repla
     revision: 1,
     updatedAt: '2026-07-12T10:00:00.000Z',
   })
-  assert.equal((await readdir(join(project.canvasDir, 'versions'))).length, 1)
+  assert.equal((await readdir(join(project.canvasDir, 'versions'))).length, 0)
 })
 
 test('cleans the first failed revision so metadata-less load remains empty', async (t) => {
@@ -255,9 +255,9 @@ test('loads a legacy current scene and migrates it on the next committed save', 
     { revision: 8, updatedAt: '2026-07-12T10:00:00.000Z' },
   )
   const metadata = JSON.parse(await readFile(join(currentDir, 'metadata.json'), 'utf8'))
-  assert.equal(metadata.schemaVersion, 2)
+  assert.equal(metadata.schemaVersion, 3)
   assert.equal(metadata.revision, 8)
-  assert.match(metadata.scenePath, /^versions\/revision-8-[0-9a-f-]+\.excalidraw$/)
+  assert.match(metadata.scenePath, /^current\/scene-[ab]\.excalidraw$/)
   assert.deepEqual((await store.load(project)).scene, migratedScene)
 })
 
@@ -281,7 +281,7 @@ test('rejects schema v2 metadata without a pointer instead of falling back to th
 
 test('treats malformed schema v2 pointers and revisions as corruption', async (t) => {
   for (const [label, mutate] of [
-    ['unsupported schema', (metadata) => ({ ...metadata, schemaVersion: 3 })],
+    ['unsupported schema', (metadata) => ({ ...metadata, schemaVersion: 99 })],
     ['missing revision', ({ revision: _revision, ...metadata }) => metadata],
     ['missing updatedAt', ({ updatedAt: _updatedAt, ...metadata }) => metadata],
     ['zero revision', (metadata) => ({ ...metadata, revision: 0 })],
@@ -466,12 +466,12 @@ test('preserves a recovery scene on revision conflict', async (t) => {
     },
   )
 
-  const versions = await readdir(join(project.canvasDir, 'versions'))
+  const versions = await readdir(join(project.canvasDir, 'snapshots'))
   const recoveries = versions.filter((name) => name.startsWith('conflict-'))
   assert.equal(versions.length, 2)
   assert.equal(recoveries.length, 1)
-  assert.match(recoveries[0], /^conflict-20260712T100000000Z-[0-9a-f-]+\.excalidraw$/)
-  assert.equal(conflict.recoveryPath, join(project.canvasDir, 'versions', recoveries[0]))
+  assert.match(recoveries[0], /^conflict-[0-2]\.json$/)
+  assert.equal(conflict.recoveryPath, join(project.canvasDir, 'snapshots', recoveries[0]))
   assert.deepEqual(JSON.parse(await readFile(conflict.recoveryPath, 'utf8')), submittedScene)
   assert.deepEqual((await store.load(project)).scene, scene)
 })
