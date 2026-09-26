@@ -34,7 +34,10 @@ jobs:
           "TMP=$testTemp" >> $env:GITHUB_ENV
       - run: npm ci
       - run: npm run check:publish
-      - run: npm test
+      - run: npm run test:ui
+      # The Windows suite starts several PowerShell children. Bound concurrency
+      # on hosted runners so process startup does not starve the lock handshake.
+      - run: node --test --test-concurrency=2 "scripts/*.test.mjs"
       - run: npm run build
       - name: Obtain verified portable compiler
         shell: powershell
