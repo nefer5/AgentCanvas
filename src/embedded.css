@@ -1,0 +1,16 @@
+html,body,#root {height:100%;margin:0}
+.dsh-canvas {height:100%;display:flex;flex-direction:column;background:#fff;color:#222;font:13px system-ui;position:relative}
+.dsh-canvas-editor {flex:1;min-height:200px;position:relative}
+.dsh-canvas-controls {display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px;border-top:1px solid #ddd}
+.dsh-canvas-controls input {flex:1;min-width:120px;padding:6px;border:1px solid #ccc;border-radius:5px}
+.dsh-canvas-controls button {padding:6px 10px;cursor:pointer}
+.dsh-canvas-controls [role=alert] {color:#a33}
+.dsh-edit-list {max-height:130px;overflow:auto;padding:8px;background:#edf5ff;border-top:1px solid #b9d5f8}
+.dsh-edit-list button {margin:4px;padding:4px 10px}
+.dsh-edit-preview {position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;background:white;border:2px solid #5492db}
+.dsh-edit-toolbar {display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:#edf5ff}
+.dsh-edit-toolbar [role=alert] {color:#a33}
+.dsh-edit-scene {flex:1;min-height:0}
+.dsh-reject-form {flex-basis:100%;padding:8px;border:1px solid #cad8e6;border-radius:6px;background:#fff;margin-top:6px}
+.dsh-reject-form label {display:block}
+.dsh-reject-form textarea {display:block;box-sizing:border-box;width:100%;margin:6px 0;padding:7px;resize:vertical;font:inherit;border:1px solid #bcc7d0;border-radius:4px}

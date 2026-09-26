@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import EmbeddedCanvas from './EmbeddedCanvas'
 
 const root = document.getElementById('root')
 
@@ -10,6 +11,6 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    {new URLSearchParams(location.search).get('embed') === 'dsh' ? <EmbeddedCanvas /> : <App />}
   </StrictMode>,
 )

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Excalidraw } from '@excalidraw/excalidraw'
+import { CaptureUpdateAction, Excalidraw } from '@excalidraw/excalidraw'
 import type {
   AppState,
   BinaryFiles,
@@ -33,7 +33,10 @@ import {
   type PanelSubmissionResult,
 } from './components/AgentPanel'
 import { loadScene, saveScene } from './persistence'
-import { LIBRARY_KEY, loadLibrary } from './library'
+import { loadLibrary, saveLibrary } from './library'
+import { createToolStyles, drawingDefaults } from './drawingDefaults'
+import { PartialEraser } from './components/PartialEraser'
+import { completeErasedStrokes } from './partialEraser'
 import './app.css'
 
 const LOCAL_SAVE_DELAY_MS = 300
@@ -100,6 +103,8 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null)
+  const [canvasApi, setCanvasApi] = useState<ExcalidrawImperativeAPI | null>(null)
+  const toolStylesRef = useRef(createToolStyles())
   const localTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
   const diskTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
   const submissionAttemptRef = useRef<SubmissionAttempt | null>(null)
@@ -199,6 +204,7 @@ export default function App() {
       scheduleDiskSave()
     }
     setInitialScene(scene)
+    toolStylesRef.current = createToolStyles()
     setCanvasEmpty(!hasSceneContent(scene))
     sessionProjectRef.current = project.id
     setCurrentProjectId(project.id)
@@ -303,6 +309,13 @@ export default function App() {
     files: BinaryFiles,
   ) => {
     if (!saver.projectId) return
+    const completed = completeErasedStrokes(elements)
+    if (completed !== elements && apiRef.current) {
+      apiRef.current.updateScene({ elements: completed, captureUpdate: CaptureUpdateAction.NEVER })
+      return
+    }
+    const toolStyle = toolStylesRef.current(appState)
+    if (toolStyle) apiRef.current?.updateScene({ appState: toolStyle })
     const scene = captureScene(elements, appState, files)
     saver.update(scene)
     submissionAttemptRef.current = null
@@ -534,19 +547,21 @@ export default function App() {
         key={currentProject.id}
         initialData={{
           ...(initialScene as ExcalidrawInitialDataState | null),
-          appState: { currentItemRoughness: 0, ...initialScene?.appState },
+          appState: { ...initialScene?.appState, ...drawingDefaults },
           libraryItems: loadLibrary(),
         }}
         onLibraryChange={(items) => {
-          try { window.localStorage.setItem(LIBRARY_KEY, JSON.stringify(items)) }
+          try { saveLibrary(items) }
           catch { setAppError('图形库保存失败，请导出图形库备份。') }
         }}
         excalidrawAPI={(api) => {
           apiRef.current = api
+          setCanvasApi(api)
         }}
         onChange={handleChange}
         langCode="zh-CN"
       />
+      <PartialEraser key={currentProject.id} api={canvasApi} />
       <AgentPanel
         projects={projects}
         currentProjectId={currentProject.id}
