@@ -199,7 +199,9 @@ test('retries a transient Windows sharing violation while replacing a file', {
       reject(new Error(`File locker ${result.event} before locking (${result.code})`))
     })
   })
-  await withTimeout(lockedSignal, 2_000, 'Timed out waiting for the file locker to signal LOCKED')
+  // Readiness includes cold PowerShell startup on hosted Windows runners.
+  // The actual locked-write and retry assertions below keep their original timings.
+  await withTimeout(lockedSignal, 15_000, 'Timed out waiting for the file locker to signal LOCKED')
 
   let settled = false
   const completion = writeFileAtomic(destination, 'new').then(
