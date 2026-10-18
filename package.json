@@ -1,7 +1,7 @@
 {
-  "name": "excalidraw-local",
+  "name": "@nefer5/agent-canvas",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.4",
   "type": "module",
   "bin": {
     "agent-canvas": "scripts/agent-canvas.mjs"
@@ -19,7 +19,8 @@
     "release": "npm test && npm run build && node scripts/build-release.mjs",
     "release:package": "node scripts/build-release.mjs",
     "check:publish": "node scripts/check-publish.mjs",
-    "export:source": "node scripts/export-source.mjs"
+    "export:source": "node scripts/export-source.mjs",
+    "pack:local": "node scripts/pack-runtime.mjs"
   },
   "overrides": {
     "lodash-es": "4.18.1",

@@ -1,3 +1,4 @@
+import { getIntegrationInfo } from './integration-info.mjs'
 import { execFile as execFileCallback } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -33,6 +34,7 @@ const TOP_LEVEL_HELP = `Agent Canvas CLI ${CLI_VERSION}
   wait       等待当前项目的下一次画板提交
   inbox      领取当前项目待处理箱中最早的提交
   complete   将一条已处理提交标记为完成
+  integration-info  输出只读安装与内嵌协议信息
   projects   列出已注册项目
 
 全局选项:
@@ -174,6 +176,11 @@ export function parseCliArgs(args) {
   }
   if (['--version', '-V'].includes(args[0]) && args.length === 1) {
     return { command: 'version' }
+  }
+
+  if (args[0] === 'integration-info') {
+    if (args.length !== 1) throw argumentError('integration-info does not accept arguments')
+    return { command: 'integration-info' }
   }
 
   const [command, ...tokens] = args
@@ -408,6 +415,10 @@ export async function runAgentCli(args, dependencies) {
     return 1
   }
 
+  if (command.command === 'integration-info') {
+    stdout(JSON.stringify(getIntegrationInfo()))
+    return 0
+  }
   if (command.command === 'help') {
     stdout(formatCliHelp(command.topic))
     return 0

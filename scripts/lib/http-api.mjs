@@ -1,3 +1,4 @@
+import { getIntegrationInfo } from './integration-info.mjs'
 import {
   SceneConflictError,
   SceneCorruptionError,
@@ -278,12 +279,12 @@ export function createBridgeApi({
     }
 
     if (pathname === '/api/health') {
-      sendJson(response, 200, { ok: true }, { head: method === 'HEAD' })
+      sendJson(response, 200, { ok: true, product: 'AgentCanvas', version: getIntegrationInfo().version, installationId: getIntegrationInfo().installationId, embed: getIntegrationInfo().embed, protocol: 2, capabilities: ['boards', 'trash', 'restore', 'bound-receive'] }, { head: method === 'HEAD' })
       return true
     }
 
     if (pathname === '/api/status') {
-      sendJson(response, 200, { ok: true, protocol: 2, epoch: boardStore?.epoch, capabilities: ['boards', 'trash', 'restore', 'bound-receive'], checkedAt: new Date().toISOString() })
+      sendJson(response, 200, { ok: true, product: 'AgentCanvas', version: getIntegrationInfo().version, installationId: getIntegrationInfo().installationId, embed: getIntegrationInfo().embed, protocol: 2, epoch: boardStore?.epoch, capabilities: ['boards', 'trash', 'restore', 'bound-receive'], checkedAt: new Date().toISOString() })
       return true
     }
     if (pathname === '/api/boards') {

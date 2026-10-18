@@ -1,5 +1,7 @@
 # AgentCanvas
 
+DSH嵌入模式与独立模式已复用完整右栏组件（0.2.4）；DSH提供当前会话/课题、自动回投与提交状态，独立模式继续使用原CLI协作。使用同一安装无需复制编辑器。见[嵌入说明](docs/dsh-embedded.md)和[开发/发布/运行布局](docs/development-layout.md)。
+
 基于 Excalidraw 的本地画板，让人和 Agent 通过画布表达、提交和处理需求。
 默认使用平滑线条，内置 6 种常用三角形和一个平面直角坐标系。绘图在本机完成，可离线使用。
 
@@ -7,7 +9,7 @@
 
 ## 当前状态
 
-当前版本为 **0.2.2**。支持稳定画板/聊天绑定、可见启动、120秒等待接收、可靠性面板和可恢复画板历史。
+当前版本为 **0.2.3**。支持稳定画板/聊天绑定、可见启动、120秒等待接收、可靠性面板和可恢复画板历史。
 下载和版本说明见 [GitHub Releases](https://github.com/nefer5/AgentCanvas/releases)。安装包不含 Node，预览阶段未做代码签名。
 CI 的版本标签先生成草稿 Release，由维护者验证后公开。
 
@@ -78,6 +80,8 @@ npm run test:visual
 全局 CLI 开发链接：`npm link`。停止服务：`scripts/stop-excalidraw.ps1`。
 发布、安装验证及上传范围见 [发布手册](docs/releasing.md)。
 作为受信任回环宿主中的内嵌编辑器使用时，边界与消息协议见 [DSH 内嵌编辑模式](docs/dsh-embedded.md)。
+
+optDSH 等宿主的已有安装发现、独立数据目录启动和本地 npm 安装包见 [安装接入契约](docs/integration.md)。npm 包名已改为 `@nefer5/agent-canvas`；CLI 仍为 `agent-canvas`，目前不公开 npm 发布。
 
 ## 许可
 

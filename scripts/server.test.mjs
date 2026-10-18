@@ -1,3 +1,4 @@
+import { getIntegrationInfo } from './lib/integration-info.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
@@ -153,7 +154,14 @@ test('serves GET and HEAD health checks and rejects other methods', async (t) =>
 
   const getResponse = await fetch(`${base}/api/health`)
   assert.equal(getResponse.status, 200)
-  assert.deepEqual(await getResponse.json(), { ok: true })
+  const health = await getResponse.json()
+  assert.equal(health.ok, true)
+  assert.equal(health.product, 'AgentCanvas')
+  assert.equal(health.version, getIntegrationInfo().version)
+  assert.equal(health.installationId, getIntegrationInfo().installationId)
+  assert.equal(health.protocol, 2)
+  assert.equal(health.embed.dsh, 4)
+  assert.ok(health.capabilities.includes('bound-receive'))
 
   const headResponse = await fetch(`${base}/api/health`, { method: 'HEAD' })
   assert.equal(headResponse.status, 200)
@@ -188,7 +196,7 @@ test('accepts only same-port loopback browser origins while allowing CLI request
   for (const origin of [`http://127.0.0.1:${port}`, `http://localhost:${port}`]) {
     const response = await fetch(`${base}/api/health`, { headers: { Origin: origin } })
     assert.equal(response.status, 200)
-    assert.deepEqual(await response.json(), { ok: true })
+    assert.equal((await response.json()).ok, true)
   }
 
   for (const origin of ['https://evil.example', `http://127.0.0.1:${Number(port) + 1}`]) {
@@ -229,10 +237,7 @@ test('contains rejected async API handlers and keeps the listener alive', async 
   assert.equal((await failure.json()).error.code, 'INTERNAL_ERROR')
 
   server.bridge.api.handle = originalHandle
-  assert.deepEqual(
-    await responseJson(await fetch(`${base}/api/health`)),
-    { ok: true },
-  )
+  assert.equal((await responseJson(await fetch(`${base}/api/health`))).ok, true)
 })
 
 test('keeps static application serving separate from structured API 404s', async (t) => {

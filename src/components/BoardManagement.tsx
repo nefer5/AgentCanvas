@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ConnectionDetails } from './ConnectionDetails'
 import { InterfaceIcon } from './InterfaceIcon'
 import { sanitizeScene, STORAGE_KEY, type SceneSnapshot } from '../persistence'
 
@@ -136,15 +137,13 @@ export function BoardManagement({ board, projectId, windowId, saveState, error, 
   }
   return <section className="board-management" aria-label="画板管理">
     <div className="board-management__summary"><span className={`save-indicator ${saveState.includes('已保存') ? 'is-saved' : 'is-pending'}`}><i aria-hidden="true" />{saveState}</span><button onClick={() => setHistory(true)}><InterfaceIcon name="history" />画板历史</button></div>
-    <details className="reliability-panel">
-      <summary><span className="reliability-title"><InterfaceIcon name="shield" />连接与可靠性</span> <span className={service === '正常' && !error ? 'status-ok' : 'status-warn'}>{error ? '需处理' : service}</span></summary>
-      <dl>
-        <dt>本地服务</dt><dd>{service}{checked && ` · ${checked} 确认`}</dd>
-        <dt>接收通道</dt><dd>{board ? status ? status.receiverOnline ? '当前聊天可接收' : '离线 · 保留给原画板' : '状态未知' : '旧版项目通道'}</dd>
-        <dt>画板保存</dt><dd>{saveState}</dd>
-        {status && <><dt>待处理</dt><dd>{status.pending} 条待接收 · {status.processing} 条处理中</dd><dt>编辑窗口</dt><dd>{status.windows} 个活跃 · {status.unknownWindows} 个状态待确认</dd></>}
-        {status?.lastSubmission && <><dt>最近提交</dt><dd>{({ pending: '等待接收', processing: '已领取 · 处理租约中', completed: '已确认完成' })[status.lastSubmission.status]}</dd></>}
-      </dl>
+    <ConnectionDetails service={error?'需处理':service} healthy={service==='正常'&&!error} rows={[
+      {label:'本地服务',value:service+(checked?` · ${checked} 确认`:'')},
+      {label:'接收通道',value:board?(status?(status.receiverOnline?'当前聊天可接收':'离线 · 保留给原画板'):'状态未知'):'旧版项目通道'},
+      {label:'画板保存',value:saveState},
+      ...(status?[{label:'待处理',value:`${status.pending} 条待接收 · ${status.processing} 条处理中`},{label:'编辑窗口',value:`${status.windows} 个活跃 · ${status.unknownWindows} 个状态待确认`}]:[]),
+      ...(status?.lastSubmission?[{label:'最近提交',value:({pending:'等待接收',processing:'已领取 · 处理租约中',completed:'已确认完成'})[status.lastSubmission.status]}]:[])
+    ]}>
       <div className="board-actions"><button onClick={() => void check()}>重新检查</button><button onClick={() => void onRetrySave().catch(e => setDiagnostic(e.message))}>重试保存</button><button onClick={onExport}>导出当前副本</button></div>
       <details><summary>自动快照与空间</summary><p>当前内容持续保存；历史按固定份数、容量与时间间隔自动轮换，不再无限累积。</p><button disabled={working} onClick={() => void tidyVersions()}>查看占用与保留策略</button>{versionResult && <p role="status">{versionResult}</p>}</details>
       <details onToggle={event => { if (event.currentTarget.open) inspectDrafts() }}><summary>浏览器恢复草稿</summary><p>只保留尚未确认保存的窗口副本；恢复不会自动解除版本冲突。</p><button onClick={inspectDrafts}>检查草稿</button>{!drafts.length && <p>没有其他窗口的恢复副本</p>}{drafts.map(draft => <div className="draft-item" key={draft.key}><span>{draft.title}</span><button onClick={() => {
@@ -152,7 +151,7 @@ export function BoardManagement({ board, projectId, windowId, saveState, error, 
       }}>恢复到编辑器</button></div>)}</details>
       {service !== '正常' && <p>服务无法连接时请运行本机 AgentCanvas 启动器；不要关闭尚未保存的页面。</p>}
       <details><summary>诊断详情</summary><p>{diagnostic || '没有记录到异常'}</p><p>画板：{board?.id ?? '旧版项目画板'}<br/>接收模式：CLI 短轮询；不会自动唤醒已结束的聊天。</p></details>
-    </details>
+    </ConnectionDetails>
     {error && <p className="board-alert" role="status">{error}</p>}
     {history && createPortal(<dialog ref={dialog} className="board-history" onCancel={() => setHistory(false)} onClose={() => setHistory(false)}>
       <header><div><span className="history-eyebrow">LOCAL LIBRARY</span><h2><InterfaceIcon name="history" />画板历史</h2><p>独立画板与聊天绑定 · 所有数据保留在本机</p></div><button aria-label="关闭画板历史" onClick={() => { dialog.current?.close(); setHistory(false) }}>关闭</button></header>

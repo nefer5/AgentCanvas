@@ -14,3 +14,14 @@ html,body,#root {height:100%;margin:0}
 .dsh-reject-form {flex-basis:100%;padding:8px;border:1px solid #cad8e6;border-radius:6px;background:#fff;margin-top:6px}
 .dsh-reject-form label {display:block}
 .dsh-reject-form textarea {display:block;box-sizing:border-box;width:100%;margin:6px 0;padding:7px;resize:vertical;font:inherit;border:1px solid #bcc7d0;border-radius:4px}
+
+/* 嵌入使用独立画板的右栏组件；画布与右栏始终在各自区域内滚动。 */
+.dsh-canvas.app-shell:not(.app-shell--loading) {display:grid;grid-template-columns:minmax(0,1fr) 310px;grid-template-rows:minmax(0,1fr);font:inherit;background:var(--ui-bg);color:var(--ui-text)}
+.dsh-canvas.app-shell:has(.agent-panel--collapsed) {grid-template-columns:minmax(0,1fr) 64px}
+.dsh-canvas-workspace {position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;overflow:hidden}
+.dsh-canvas > .agent-panel {position:relative;inset:auto;width:100%;height:100%;max-height:none}
+.dsh-canvas > .agent-panel .agent-panel__header {flex-wrap:wrap}
+.dsh-submission-history {border:1px solid var(--ui-border);border-radius:10px;padding:10px 12px}
+.dsh-submission-row {display:flex;flex-wrap:wrap;gap:6px;padding:10px 0;border-bottom:1px solid var(--ui-border)}
+.dsh-submission-row span {overflow-wrap:anywhere;flex:1}
+.dsh-submission-row small {width:100%;color:var(--ui-muted)}

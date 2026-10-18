@@ -9,11 +9,13 @@ import { createToolStyles, drawingDefaults } from './drawingDefaults'
 import { loadLibrary, saveLibrary } from './library'
 import { SerializedSceneSaver } from './bridge/serializedSceneSaver'
 import { applyProposal } from './bridge/applyProposal'
+import { embeddedSubmissionAttempt } from './bridge/embeddedState'
 import type { SceneSnapshot } from './persistence'
+import { EmbeddedPanel, type HostBoard } from './components/EmbeddedPanel'
+import './app.css'
 import './embedded.css'
 
-interface Board {
-  boardId: string; sessionId: string; revision: number; scene: SceneSnapshot | null; readOnly?: boolean
+interface Board extends HostBoard {
   edits?: EditProposal[]
 }
 interface EditProposal {id:string;summary:string;status:string;baseRevision:number;feedbackDelivery?:string}
@@ -23,6 +25,7 @@ export default function EmbeddedCanvas() {
   const [board,setBoard]=useState<Board|null>(null),[api,setApi]=useState<ExcalidrawImperativeAPI|null>(null)
   const [error,setError]=useState(''),[status,setStatus]=useState('正在连接会话画板…'),[note,setNote]=useState(''),[busy,setBusy]=useState(false)
   const [edits,setEdits]=useState<EditProposal[]>([]),[preview,setPreview]=useState<EditPreview|null>(null)
+  const [historyPreview,setHistoryPreview]=useState<Board|null>(null),[connected,setConnected]=useState(false),[contentVersion,setContentVersion]=useState(0)
   const [rejecting,setRejecting]=useState<string|null>(null),[feedback,setFeedback]=useState('')
   const applying=useRef(false)
   const requestRef=useRef<(action:string,payload?:unknown)=>Promise<any>>(async()=>{throw new Error('未连接')})
@@ -39,7 +42,7 @@ export default function EmbeddedCanvas() {
   }
   const flush=async()=>{
     if(readonly.current||!ready.current)return
-    try {await saver.flush();recovery();if(alive.current)setStatus('画板已保存')}
+    try {await saver.flush();recovery();if(alive.current){setStatus('画板已保存');setContentVersion(saver.revision)}}
     catch(e){saver.pause();if(alive.current)setError(String(e instanceof Error?e.message:e))}
   }
   useEffect(()=>{
@@ -51,11 +54,11 @@ export default function EmbeddedCanvas() {
       const m=event.data
       if(event.source!==window.parent||event.origin!==origin||m?.type!=='optdsh-canvas-response'||m.channel!==channel)return
       const p=pending.get(m.id);if(!p)return
-      pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result)
+      setConnected(true);pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result)
     }
     window.addEventListener('message',receive)
     requestRef.current=(action,payload={})=>new Promise((resolve,reject)=>{
-      const id=crypto.randomUUID(), timeout=setTimeout(()=>{pending.delete(id);reject(new Error('DSH连接超时；草稿保留在本机，请重新打开'))},20000)
+      const id=crypto.randomUUID(), timeout=setTimeout(()=>{pending.delete(id);setConnected(false);reject(new Error('DSH连接超时；草稿保留在本机，请重新打开'))},20000)
       pending.set(id,{resolve,reject,timer:timeout})
       window.parent.postMessage({type:'optdsh-canvas-request',channel,id,action,payload},origin)
     })
@@ -74,7 +77,8 @@ export default function EmbeddedCanvas() {
       }
       saver.configure(b.boardId,b.revision,scene);ready.current=true
       if(!b.readOnly&&scene&&JSON.stringify(scene)!==JSON.stringify(b.scene)){saver.update(scene);timer.current=setTimeout(()=>void flush(),750)}
-      setBoard({...b,scene});setEdits(b.edits||[]);setStatus(b.readOnly?'历史快照 · 只读':'已绑定当前 DSH 会话')
+      try{setNote(localStorage.getItem(key.current+':note')||'')}catch{setError('说明草稿读取失败，请保留当前文字副本')}
+      setContentVersion(b.revision);setBoard({...b,scene});setEdits(b.edits||[]);setStatus(b.readOnly?'历史快照 · 只读':'已绑定当前 DSH 会话')
     }).catch(e=>{if(alive.current)setError(e.message)})
     return()=>{alive.current=false;ready.current=false;window.removeEventListener('message',receive);if(timer.current)clearTimeout(timer.current)
       for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('画板已关闭'))}pending.clear()}
@@ -82,26 +86,29 @@ export default function EmbeddedCanvas() {
   useEffect(()=>{
     if(!board||board.readOnly)return
     let cancelled=false
-    const poll=()=>requestRef.current('status').then((b:Board)=>{if(!cancelled)setEdits(b.edits||[])}).catch(()=>{})
+    const poll=()=>requestRef.current('status').then((b:Board)=>{if(!cancelled){setEdits(b.edits||[]);setBoard(current=>current?{...current,...b,scene:current.scene}:current);setConnected(true)}}).catch(()=>{if(!cancelled)setConnected(false)})
     const timer=setInterval(()=>void poll(),2500)
     return()=>{cancelled=true;clearInterval(timer)}
   },[board?.boardId,board?.readOnly])
   useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(saver.paused){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[saver])
+  useEffect(()=>{if(!board||board.readOnly)return;try{localStorage.setItem(key.current+':note',note)}catch{setError('说明草稿保存失败，请复制保留文字')}},[note,board?.boardId,board?.readOnly])
   async function submit(){
     if(!api||busy||readonly.current)return
     setBusy(true);setError('')
     try {
       await flush();if(saver.paused)throw new Error('请先处理保存错误，再提交')
-      submitId.current??=crypto.randomUUID()
+      const attempt=embeddedSubmissionAttempt(saver.revision,note,localStorage.getItem(key.current+':submission'),()=>submitId.current||crypto.randomUUID())
+      submitId.current=attempt.id;localStorage.setItem(key.current+':submission',JSON.stringify(attempt))
       const result=await requestRef.current('submit',{revision:saver.revision,note,clientSubmissionId:submitId.current})
-      setStatus(result.status==='uncertain'?'交付状态待核对；不会自动重发':'已提交到绑定会话；处理状态见上方记录')
-      if(result.status!=='uncertain')submitId.current=null
+      setBoard(current=>current?{...current,...result,scene:current.scene}:current)
+      setStatus(result.status==='uncertain'?'交付状态待核对；不会自动重发':'已提交到绑定会话；处理状态见提交记录')
+      // 同一画面和说明重复点击沿用提交身份，编辑后才创建新身份。
     }catch(e){setError(String(e instanceof Error?e.message:e))}finally{setBusy(false)}
   }
-  function downloadRecovery(){
-    const raw=conflictCopy.current||localStorage.getItem(key.current)||JSON.stringify(saver.scene)
+  function downloadRecovery(recovery=false){
+    const raw=recovery?(conflictCopy.current||localStorage.getItem(key.current)||JSON.stringify(saver.scene)):JSON.stringify(saver.scene||board?.scene)
     const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a')
-    a.href=url;a.download=(board?.boardId||'canvas')+'-recovery.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+    a.href=url;a.download=(board?.boardId||'canvas')+(recovery?'-recovery.json':'.excalidraw');a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
   }
   async function previewEdit(proposalId:string){
     if(busy||readonly.current)return
@@ -119,11 +126,11 @@ export default function EmbeddedCanvas() {
           if(!result.scene)throw new Error('应用后缺少画板内容')
           applying.current=true
           try {
-            saver.configure(result.boardId,result.revision,result.scene);recovery()
+            saver.configure(result.boardId,result.revision,result.scene);submitId.current=null;recovery()
             api.updateScene({elements:restoreElements(result.scene.elements as ExcalidrawElement[],api.getSceneElements(),{refreshDimensions:true}),captureUpdate:CaptureUpdateAction.IMMEDIATELY})
           }finally{queueMicrotask(()=>{applying.current=false})}
         }})
-      setPreview(null);setEdits(result.edits||[]);setStatus('Agent建议已应用；可用画板撤销按钮或Ctrl+Z撤销')
+      setPreview(null);setBoard(result);setContentVersion(result.revision);setEdits(result.edits||[]);setStatus('Agent建议已应用；可用画板撤销按钮或Ctrl+Z撤销')
     }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
   }
   async function rejectEdit(proposalId:string){
@@ -143,8 +150,13 @@ export default function EmbeddedCanvas() {
     <button onClick={()=>void rejectEdit(id)} disabled={busy}>{feedback.trim()?'拒绝并发送修改意见':'确认拒绝'}</button>
     <button onClick={()=>setRejecting(null)} disabled={busy}>取消</button>
   </div>
+  async function check(){try{const b=await requestRef.current('status') as Board;setBoard(current=>current?{...current,...b,scene:current.scene}:current);setEdits(b.edits||[]);setConnected(true);if(!saver.paused)setError('')}catch(e){setConnected(false);setError(String(e))}}
+  async function snapshot(id:string){try{await flush();setHistoryPreview(await requestRef.current('snapshot',{submissionId:id}) as Board)}catch(e){setError(String(e))}}
+  async function complete(id:string){try{const b=await requestRef.current('complete',{submissionId:id}) as Board;setBoard(current=>current?{...current,...b,scene:current.scene}:current)}catch(e){setError(String(e))}}
+  useEffect(()=>{const handler=(e:KeyboardEvent)=>{if(e.ctrlKey&&e.key==='Enter'&&!preview&&!historyPreview){e.preventDefault();void submit()}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)})
   if(!board)return <div role="status">{error||status}</div>
-  return <main className="dsh-canvas">
+  return <main className="app-shell dsh-canvas" aria-label="DSH 会话画板">
+    <div className="dsh-canvas-workspace">
     <div className="dsh-canvas-editor"><Excalidraw
       initialData={{...(board.scene as ExcalidrawInitialDataState|null),appState:{...board.scene?.appState,...drawingDefaults},libraryItems:loadLibrary()}}
       excalidrawAPI={setApi} langCode="zh-CN" viewModeEnabled={!!board.readOnly||!!preview||busy}
@@ -156,7 +168,7 @@ export default function EmbeddedCanvas() {
         const style=styles.current(appState);if(style)api.updateScene({appState:style})
         const scene=JSON.parse(serializeAsJSON(elements,appState,files,'local')) as SceneSnapshot
         if(JSON.stringify(scene)===JSON.stringify(saver.scene))return
-        saver.update(scene);submitId.current=null;recovery();setStatus('草稿已保留，正在保存…')
+        saver.update(scene);submitId.current=null;setContentVersion(saver.revision);recovery();setStatus('草稿已保留，正在保存…')
         if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>void flush(),750)
       }}/>{!board.readOnly&&!preview&&!busy&&<PartialEraser api={api}/>}</div>
     {preview&&<section className="dsh-edit-preview" aria-label="Agent画板建议预览">
@@ -176,12 +188,12 @@ export default function EmbeddedCanvas() {
         {!preview&&rejectForm(p.id)}
       </div>)}
     </div>}
-    <div className="dsh-canvas-controls">
-      <span title={board.sessionId}>发送目标：{board.sessionId.slice(-8)}</span>
-      {!board.readOnly&&<><input aria-label="画板说明" placeholder="给当前聊天的说明" value={note} maxLength={4000} disabled={busy} onChange={e=>{setNote(e.target.value);submitId.current=null}}/>
-      <button onClick={()=>void submit()} disabled={busy||saver.paused}>发送到本会话</button></>}
-      <span role="status">{status}</span>
-      {error&&<span role="alert">{error} <button onClick={downloadRecovery}>导出恢复副本</button></span>}
+    {historyPreview&&<section className="dsh-edit-preview" aria-label="历史画板快照">
+      <div className="dsh-edit-toolbar"><strong>历史快照 · 内容版本 {historyPreview.revision} · 只读</strong><button onClick={()=>setHistoryPreview(null)}>返回当前画板</button></div>
+      <div className="dsh-edit-scene"><Excalidraw key={'history-'+historyPreview.revision} initialData={historyPreview.scene as ExcalidrawInitialDataState} viewModeEnabled langCode="zh-CN" /></div>
+    </section>}
     </div>
+    <EmbeddedPanel board={board} scene={saver.scene} revision={contentVersion} note={note} busy={busy||saver.paused||!!preview||!!historyPreview} status={status} error={error} connected={connected}
+      onNote={value=>{setNote(value);submitId.current=null}} onSubmit={()=>void submit()} onCheck={()=>void check()} onSave={()=>void flush()} onExport={()=>downloadRecovery()} onExportRecovery={()=>downloadRecovery(true)} onSnapshot={id=>void snapshot(id)} onComplete={id=>void complete(id)}/>
   </main>
 }

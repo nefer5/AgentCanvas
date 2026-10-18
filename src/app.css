@@ -229,3 +229,5 @@ button { touch-action: manipulation; }
 .agent-panel--collapsed .chat-binding__compact { display: block; font-size: 10px; text-align: center; }
 @media (max-width: 999px) { .agent-panel--collapsed .chat-binding { width: auto; flex: 0 0 auto; padding: 6px; flex-direction: row; }.agent-panel--collapsed .chat-binding .interface-icon { display: none; } }
 @media (prefers-color-scheme: dark) { .chat-binding--unbound { color: #ddc08d; background: #443a2c; border-color: #615039; } }
+
+.reliability-row {display:contents}

@@ -173,5 +173,8 @@ if (isMainModule) {
   const portFlagIndex = process.argv.indexOf('--port')
   const requestedPort = portFlagIndex >= 0 ? Number(process.argv[portFlagIndex + 1]) : 4173
   const port = Number.isInteger(requestedPort) && requestedPort > 0 ? requestedPort : 4173
-  startServer({ root: resolve(projectRoot, 'dist'), port })
+  const dataFlagIndex = process.argv.indexOf('--data-root')
+  if (dataFlagIndex >= 0 && (!process.argv[dataFlagIndex + 1] || process.argv[dataFlagIndex + 1].startsWith('--'))) throw new Error('--data-root requires a directory')
+  const dataRoot = dataFlagIndex >= 0 ? resolve(process.argv[dataFlagIndex + 1]) : undefined
+  startServer({ root: resolve(projectRoot, 'dist'), port, dataRoot })
 }

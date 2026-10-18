@@ -20,6 +20,10 @@ export interface PanelSubmissionResult {
 
 export interface AgentPanelProps {
   management?: ReactNode
+  connection?: { connected: boolean; label: string }
+  deliveryLabel?: string
+  readOnly?: boolean
+  browseLabel?: string
   bound?: boolean
   boardName?: string
   conversation?: string | null
@@ -77,6 +81,7 @@ function bindingLabel(conversation: string) {
 }
 
 export function AgentPanel({
+  connection, deliveryLabel, readOnly = false, browseLabel = '打开其他画板',
   management, bound = false, boardName, conversation = null, onBrowseBoards, elementCount = 0, revision = 0,
   projects,
   currentProjectId,
@@ -96,10 +101,10 @@ export function AgentPanel({
 }: AgentPanelProps) {
   const [collapsed, setCollapsed] = useState(startsCollapsed)
   const currentProject = projects.find((project) => project.id === currentProjectId)
-  const online = sessions.length > 0
+  const online = connection?.connected ?? (sessions.length > 0)
   const staleTarget = Boolean(selectedSessionId && !sessions.some(session => session.id === selectedSessionId))
   const targetRequired = !bound && (sessions.length > 1 && !selectedSessionId || staleTarget)
-  const liveMessage = error ?? (lastResult ? resultCopy(lastResult.status) : '')
+  const liveMessage = error ?? deliveryLabel ?? (lastResult ? resultCopy(lastResult.status) : '')
 
   return (
     <aside
@@ -166,11 +171,11 @@ export function AgentPanel({
         >
           <InterfaceIcon name="folder" /><span>{currentProject?.rootPath ?? '未选择项目'}</span>
         </p>
-        {bound && <button className="workspace-browse" type="button" onClick={onBrowseBoards}><InterfaceIcon name="history" />打开其他画板<InterfaceIcon name="chevron" /></button>}
+        {bound && onBrowseBoards && <button className="workspace-browse" type="button" onClick={onBrowseBoards}><InterfaceIcon name="history" />{browseLabel}<InterfaceIcon name="chevron" /></button>}
 
         <p className={`agent-panel__connection agent-panel__connection--${online ? 'online' : 'offline'}`}>
           <span className="agent-panel__status-dot" aria-hidden="true" />
-          <span>{online ? ONLINE_COPY : OFFLINE_COPY}</span>
+          <span>{connection?.label ?? (online ? ONLINE_COPY : OFFLINE_COPY)}</span>
         </p>
         </section>
 
@@ -205,7 +210,7 @@ export function AgentPanel({
             value={note}
             maxLength={4000}
             rows={4}
-            disabled={busy}
+            disabled={busy || readOnly}
             placeholder="说明你希望关注的部分，或下一步要完成的事情…"
             onChange={(event) => onNoteChange(event.target.value)}
           />
@@ -215,7 +220,7 @@ export function AgentPanel({
         <button
           className="agent-panel__submit"
           type="button"
-          disabled={canvasEmpty || busy || targetRequired}
+          disabled={canvasEmpty || busy || targetRequired || readOnly}
           aria-busy={busy}
           onClick={() => void onSubmit()}
         >
@@ -225,7 +230,7 @@ export function AgentPanel({
         {lastResult ? (
           <p className="agent-panel__last-result">
             最近提交：{formatSubmittedAt(lastResult.submittedAt)} · 版本 {lastResult.sceneRevision} ·{' '}
-            {resultCopy(lastResult.status)}
+            {deliveryLabel ?? resultCopy(lastResult.status)}
           </p>
         ) : null}
       </div>

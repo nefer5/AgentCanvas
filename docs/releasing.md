@@ -5,6 +5,8 @@
 `package.json` 是版本事实源，`package-lock.json` 的根版本同步更新。
 CLI 和安装器读取同一版本。稳定 AppId 不随版本变化。当前先支持 Windows x64。
 
+本地 npm 分发使用 `npm run pack:local -- <输出目录>`；必须先构建网页，使用预构建运行包而非源码根的直接 npm pack。包名 `@nefer5/agent-canvas`，当前 private:true，未公开发布。具体契约见 [安装接入](integration.md)。
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-inno.ps1
 npm run check:publish
